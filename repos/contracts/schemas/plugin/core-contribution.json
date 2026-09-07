@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/plugin/core-contribution.json",
+  "title": "PluginCoreContribution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "tools": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/Tool" } },
+    "rules": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/Rule" } }
+  },
+  "$defs": {
+    "Expr": { "type": "string", "pattern": "^\\$\\.[A-Za-z0-9_.]+$", "maxLength": 80 },
+    "Tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "description", "inputSchema", "steps"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,40}$" },
+        "kind": { "enum": ["read", "write"] },
+        "description": { "type": "string", "minLength": 4, "maxLength": 200 },
+        "inputSchema": { "type": "object", "additionalProperties": true },
+        "steps": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/Step" } }
+      }
+    },
+    "CallStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["call"],
+      "properties": {
+        "call": { "type": "string", "maxLength": 40 },
+        "args": { "type": "object", "additionalProperties": true },
+        "alias": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,20}$" }
+      }
+    },
+    "AssertStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["require", "otherwise"],
+      "properties": {
+        "require": { "$ref": "#/$defs/Expr" },
+        "otherwise": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+            "message": { "type": "string", "minLength": 1, "maxLength": 200 }
+          }
+        }
+      }
+    },
+    "Step": {
+      "oneOf": [{ "$ref": "#/$defs/CallStep" }, { "$ref": "#/$defs/AssertStep" }]
+    },
+    "Rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "severity", "when", "evidence"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,40}$" },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "when": { "$ref": "#/$defs/Predicate" },
+        "evidence": { "type": "string", "minLength": 4, "maxLength": 200 },
+        "suggestion": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "Predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "all": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/Condition" } },
+        "any": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/Condition" } }
+      }
+    },
+    "Condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "op"],
+      "properties": {
+        "field": { "type": "string", "maxLength": 60 },
+        "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte", "contains", "nonempty", "empty"] },
+        "value": {}
+      }
+    }
+  }
+}

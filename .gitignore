@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage/
+artifacts/
+*.log
+repos/core/build/
+repos/core/dist/
+repos/mac/build/
+repos/mac/release/
+repos/mac/resources/runtime/
+
+# 本地工具状态与 IDE 配置（不随仓库分发）
+.mimosa/
+.idea/
+.claude/
+tmp/
+
+# 参考工程代码（仅本地工作区保留，不随仓库分发）
+source/layoutsee-prototype/
+source/uiautodev/

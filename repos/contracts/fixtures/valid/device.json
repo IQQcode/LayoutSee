@@ -1,0 +1,14 @@
+{
+  "$schemaRef": "device/device.json",
+  "value": {
+    "deviceId": "android-3B161V012A600000",
+    "platform": "android",
+    "serial": "3B161V012A600000",
+    "model": "PLK110",
+    "product": "PLK110",
+    "status": "connected",
+    "capabilities": ["screenshot", "layout", "input", "apps", "media-screenshot-fallback"],
+    "readonly": false,
+    "lastSeenAt": 1787875200000
+  }
+}

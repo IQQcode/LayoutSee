@@ -1,0 +1,47 @@
+{
+  "$schemaRef": "plugin/index.json",
+  "value": {
+    "schemaVersion": "1.0",
+    "directory": "/Users/demo/Library/Application Support/LayoutSee/plugins",
+    "builtinDirectory": "/Applications/LayoutSee.app/Contents/Resources/plugins",
+    "generatedAt": 1756600000000,
+    "cacheHit": true,
+    "items": [
+      {
+        "id": "layoutsee.selector-helper",
+        "name": "节点选择器助手",
+        "version": "1.0.0",
+        "origin": "local",
+        "overrides": "builtin",
+        "status": "ready",
+        "activation": "onOpen",
+        "permissions": ["snapshot.read", "device.write"],
+        "grantedPermissions": ["snapshot.read"],
+        "contributions": {
+          "workbenchTabs": [
+            { "id": "selector", "title": "选择器", "order": 600, "entry": "ui/index.html" }
+          ]
+        }
+      },
+      {
+        "id": "layoutsee.legacy-demo",
+        "name": "存量插件",
+        "version": "0.9.0",
+        "origin": "local",
+        "legacy": true,
+        "status": "device-mismatch",
+        "activation": "onOpen",
+        "permissions": ["snapshot.read"],
+        "contributions": {
+          "workbenchTabs": [{ "id": "main", "title": "存量插件", "order": 500, "entry": "index.html" }]
+        }
+      },
+      {
+        "id": "broken.demo",
+        "origin": "local",
+        "status": "invalid",
+        "error": { "code": "PLUGIN_INVALID", "message": "清单缺少 contributions", "retryable": false }
+      }
+    ]
+  }
+}

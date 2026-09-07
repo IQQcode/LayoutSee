@@ -1,0 +1,30 @@
+{
+  "name": "layoutsee-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "repos/contracts",
+    "repos/web",
+    "repos/mac"
+  ],
+  "scripts": {
+    "dev:web": "node scripts/dev-web.mjs",
+    "contracts:generate": "npm --workspace @layoutsee/contracts run generate",
+    "contracts:check": "npm --workspace @layoutsee/contracts run check",
+    "test:contracts": "npm --workspace @layoutsee/contracts test",
+    "test:core": "uv run --project repos/core python -m unittest discover -s repos/core/tests -p 'test_*.py' -v",
+    "test:mac": "npm --workspace @layoutsee/mac test",
+    "test:web": "npm --workspace @layoutsee/web test",
+    "test:unit": "npm run test:contracts && npm run test:mac && npm run test:web && npm run test:core",
+    "lint": "npm --workspace @layoutsee/contracts run lint && npm --workspace @layoutsee/web run lint && npm --workspace @layoutsee/mac run lint",
+    "typecheck": "npm --workspace @layoutsee/contracts run typecheck && npm --workspace @layoutsee/web run typecheck && npm --workspace @layoutsee/mac run typecheck",
+    "build:all": "npm run contracts:check && npm --workspace @layoutsee/web run build && npm --workspace @layoutsee/mac run build",
+    "package:mac": "npm --workspace @layoutsee/mac run package:mac",
+    "verify:artifacts": "node scripts/verify-artifacts.mjs",
+    "package:mac:all": "npm --workspace @layoutsee/mac run package:mac:all"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

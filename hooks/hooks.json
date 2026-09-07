@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "LayoutSee Workspace Hook 注册表：Agent 行为的硬性护栏。所有 hook 均为按需启用，避免污染每个会话的上下文。",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hook": "hooks/scripts/guard-uiautodev-readonly.sh",
+        "description": "禁止修改第三方只读内核 source/uiautodev，二开产物必须落在 layoutsee-prototype 或独立目录"
+      }
+    ]
+  },
+  "notes": [
+    "添加新 hook 时：在 hooks/scripts/ 下补充脚本，并在本文件注册。",
+    "候选护栏（按需启用）：",
+    "1. 限制文件最大行数，防止 Agent 惰性堆叠代码。",
+    "2. 改动了 A 目录文件必须检查 B 目录，因为两者有强依赖关系。",
+    "3. 禁止在某个目录新增代码（如老框架目录），新代码一律进新框架目录。"
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/snapshot/layout-snapshot.json",
+  "title": "LayoutSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshotId", "deviceId", "createdAt", "foreground", "windowSizePx", "hierarchyAccuracy", "synchronization", "screenshot", "roots", "nodes", "warnings"],
+  "properties": {
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "integer", "minimum": 0 },
+    "foreground": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageName"],
+      "properties": {
+        "packageName": { "type": "string", "minLength": 1 },
+        "activity": { "type": "string" }
+      }
+    },
+    "windowSizePx": { "$ref": "#/$defs/Size" },
+    "density": { "type": "number", "exclusiveMinimum": 0 },
+    "hierarchyAccuracy": { "type": "string", "enum": ["exact", "best_effort", "limited"] },
+    "synchronization": { "type": "string", "enum": ["exact", "best_effort", "context_changed"] },
+    "screenshot": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "contentUrl"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "contentUrl": { "type": "string", "pattern": "^/api/v1/snapshots/" }
+          }
+        }
+      ]
+    },
+    "roots": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/LayoutNode" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "Size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "Bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left", "top", "right", "bottom"],
+      "properties": {
+        "left": { "type": "number" },
+        "top": { "type": "number" },
+        "right": { "type": "number" },
+        "bottom": { "type": "number" }
+      }
+    },
+    "LayoutNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeKey", "parentKey", "depth", "childIndex", "className", "boundsPx", "boundsNormalized", "visible", "enabled", "clickable", "scrollable", "raw"],
+      "properties": {
+        "nodeKey": { "type": "string", "minLength": 1 },
+        "parentKey": { "type": ["string", "null"] },
+        "depth": { "type": "integer", "minimum": 0 },
+        "childIndex": { "type": "integer", "minimum": 0 },
+        "className": { "type": "string", "minLength": 1 },
+        "resourceId": { "type": "string" },
+        "text": { "type": "string" },
+        "contentDescription": { "type": "string" },
+        "boundsPx": { "$ref": "#/$defs/Bounds" },
+        "boundsNormalized": { "$ref": "#/$defs/Bounds" },
+        "visible": { "type": "boolean" },
+        "enabled": { "type": "boolean" },
+        "clickable": { "type": "boolean" },
+        "scrollable": { "type": "boolean" },
+        "drawingOrder": { "type": "integer", "minimum": 0 },
+        "raw": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}
+

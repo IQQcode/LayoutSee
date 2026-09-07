@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/plugin/manifest.json",
+  "title": "PluginManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "contributions"],
+  "properties": {
+    "schemaVersion": { "const": "2.0" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$", "maxLength": 64 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": { "type": "string", "maxLength": 200 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layoutsee"],
+      "properties": { "layoutsee": { "type": "string", "maxLength": 40 } }
+    },
+    "hosts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["app", "web"] },
+      "default": ["app", "web"]
+    },
+    "devicePlatforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["android", "ios", "harmony"] }
+    },
+    "activation": { "enum": ["onOpen", "onSnapshot", "onCommand"], "default": "onOpen" },
+    "runtime": { "enum": ["iframe", "declarative"], "default": "iframe" },
+    "permissions": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/Permission" } },
+    "contributions": { "$ref": "#/$defs/Contributions" }
+  },
+  "$defs": {
+    "Permission": {
+      "enum": ["snapshot.read", "device.read", "device.write", "mcp.call", "storage.local", "host.integration"]
+    },
+    "RelativeAsset": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$", "maxLength": 200 },
+    "HtmlEntry": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.html$", "maxLength": 200 },
+    "Contributions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "workbenchTabs": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/TabContribution" } },
+        "workbenchCards": { "type": "array", "maxItems": 4, "items": { "$ref": "#/$defs/CardContribution" } },
+        "commands": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/CommandContribution" } },
+        "mcpTools": { "$ref": "#/$defs/SourceRef" },
+        "diagnosticRules": { "$ref": "#/$defs/SourceRef" }
+      }
+    },
+    "SourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": { "source": { "$ref": "#/$defs/RelativeAsset" } }
+    },
+    "TabContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "entry"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 12 },
+        "icon": { "type": "string", "maxLength": 40 },
+        "order": { "type": "integer", "minimum": 100, "maximum": 999, "default": 500 },
+        "entry": { "$ref": "#/$defs/HtmlEntry" }
+      }
+    },
+    "CardContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "slot", "entry"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$" },
+        "slot": { "enum": ["element.sidebar", "intelligence.bottom", "common.bottom"] },
+        "entry": { "$ref": "#/$defs/HtmlEntry" },
+        "height": { "type": "integer", "minimum": 80, "maximum": 480 }
+      }
+    },
+    "CommandContribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9.-]{1,48}$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 24 }
+      }
+    }
+  }
+}

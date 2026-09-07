@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>快照速览</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>快照速览</h1>
+      <p id="status">正在读取宿主上下文…</p>
+      <dl id="stats"></dl>
+      <div class="actions">
+        <button id="refresh" type="button">重新读取快照</button>
+        <button id="export" type="button" hidden>导出统计</button>
+        <button id="copy" type="button">复制统计</button>
+      </div>
+    </main>
+    <script src="/plugin-runtime.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

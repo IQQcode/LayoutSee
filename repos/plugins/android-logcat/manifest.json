@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "id": "android-logcat",
+  "name": "Android日志抓取",
+  "description": "图形化过滤 adb logcat：级别与 tag/pid 过滤、暂停继续、清空重抓、自动滚动与换行，交互对齐 Android Studio",
+  "version": "1.0.0",
+  "engines": { "layoutsee": ">=0.1.0 <0.3.0" },
+  "hosts": ["app"],
+  "devicePlatforms": ["android"],
+  "activation": "onOpen",
+  "runtime": "iframe",
+  "permissions": ["device.read", "device.write", "storage.local", "host.integration"],
+  "contributions": {
+    "workbenchTabs": [
+      { "id": "logcat", "title": "日志抓取", "icon": "terminal", "entry": "index.html", "order": 300 }
+    ]
+  }
+}

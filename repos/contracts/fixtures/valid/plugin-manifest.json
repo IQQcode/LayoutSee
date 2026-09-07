@@ -1,0 +1,27 @@
+{
+  "$schemaRef": "plugin/manifest.json",
+  "value": {
+    "schemaVersion": "2.0",
+    "id": "layoutsee.selector-helper",
+    "name": "节点选择器助手",
+    "description": "从当前快照生成稳定选择器并一键点击",
+    "version": "1.0.0",
+    "engines": { "layoutsee": ">=0.1.0 <0.3.0" },
+    "hosts": ["app", "web"],
+    "devicePlatforms": ["android"],
+    "activation": "onOpen",
+    "runtime": "iframe",
+    "permissions": ["snapshot.read", "device.read", "device.write", "storage.local"],
+    "contributions": {
+      "workbenchTabs": [
+        { "id": "selector", "title": "选择器", "icon": "puzzle", "order": 600, "entry": "ui/index.html" }
+      ],
+      "workbenchCards": [
+        { "id": "selector-card", "slot": "element.sidebar", "entry": "ui/card.html", "height": 220 }
+      ],
+      "commands": [{ "id": "selector.generate", "title": "生成选择器" }],
+      "mcpTools": { "source": "core/tools.json" },
+      "diagnosticRules": { "source": "core/rules.json" }
+    }
+  }
+}

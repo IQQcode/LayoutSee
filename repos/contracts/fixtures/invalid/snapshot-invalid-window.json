@@ -1,0 +1,17 @@
+{
+  "$schemaRef": "snapshot/layout-snapshot.json",
+  "$expectedError": "SNAPSHOT_STALE",
+  "value": {
+    "snapshotId": "snap-bad",
+    "deviceId": "pixel-7",
+    "createdAt": 1787875200000,
+    "foreground": { "packageName": "com.baidu.tieba" },
+    "windowSizePx": { "width": 0, "height": 2400 },
+    "hierarchyAccuracy": "exact",
+    "synchronization": "exact",
+    "screenshot": null,
+    "roots": [],
+    "nodes": [],
+    "warnings": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schemaRef": "plugin/core-contribution.json",
+  "value": {
+    "schemaVersion": "1.0",
+    "tools": [
+      {
+        "name": "tap_by_text",
+        "kind": "write",
+        "description": "按可见文本查找元素并点击命中项",
+        "inputSchema": {
+          "type": "object",
+          "required": ["text"],
+          "additionalProperties": false,
+          "properties": { "text": { "type": "string", "maxLength": 200 } }
+        },
+        "steps": [
+          { "call": "find_element", "args": { "query": "$.input.text" }, "alias": "hit" },
+          { "require": "$.hit.ref", "otherwise": { "code": "AMBIGUOUS_ELEMENT", "message": "未唯一命中该文本" } },
+          { "call": "tap", "args": { "ref": "$.hit.ref" } }
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "type": "tiny_text",
+        "severity": "warning",
+        "when": {
+          "all": [
+            { "field": "text", "op": "nonempty" },
+            { "field": "boundsPx.height", "op": "lt", "value": 12 }
+          ]
+        },
+        "evidence": "文本节点高度不足 12px，可能被裁切",
+        "suggestion": "检查父容器约束或字号"
+      }
+    ]
+  }
+}

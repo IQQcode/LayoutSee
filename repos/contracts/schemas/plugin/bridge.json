@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/plugin/bridge.json",
+  "title": "PluginBridgeMessage",
+  "oneOf": [
+    { "$ref": "#/$defs/Call" },
+    { "$ref": "#/$defs/Result" },
+    { "$ref": "#/$defs/Failure" },
+    { "$ref": "#/$defs/Event" }
+  ],
+  "$defs": {
+    "Method": {
+      "enum": [
+        "host.getContext",
+        "snapshot.get",
+        "snapshot.query",
+        "device.info",
+        "device.currentApp",
+        "device.logcat",
+        "device.tap",
+        "device.swipe",
+        "device.inputText",
+        "device.logcatClear",
+        "mcp.callTool",
+        "storage.get",
+        "storage.set",
+        "host.saveFile",
+        "host.copyText",
+        "ui.toast",
+        "ui.confirm"
+      ]
+    },
+    "Call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "id", "method"],
+      "properties": {
+        "v": { "const": 1 },
+        "kind": { "const": "call" },
+        "id": { "type": "integer", "minimum": 1 },
+        "method": { "$ref": "#/$defs/Method" },
+        "params": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "Result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "id", "data"],
+      "properties": {
+        "v": { "const": 1 },
+        "kind": { "const": "result" },
+        "id": { "type": "integer", "minimum": 1 },
+        "data": {}
+      }
+    },
+    "Failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "id", "error"],
+      "properties": {
+        "v": { "const": 1 },
+        "kind": { "const": "error" },
+        "id": { "type": "integer", "minimum": 1 },
+        "error": { "$ref": "https://layoutsee.local/schemas/common/error.json" }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["v", "kind", "name", "payload"],
+      "properties": {
+        "v": { "const": 1 },
+        "kind": { "const": "event" },
+        "name": { "enum": ["context", "snapshot", "device", "theme", "readonly"] },
+        "payload": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

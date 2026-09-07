@@ -1,0 +1,11 @@
+{
+  "$schemaRef": "plugin/bridge.json",
+  "$expectedError": "PLUGIN_PERMISSION_DENIED",
+  "value": {
+    "v": 1,
+    "kind": "call",
+    "id": 3,
+    "method": "shell.exec",
+    "params": { "command": "rm -rf /" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schemaRef": "common/info-envelope.json",
+  "value": {
+    "ok": true,
+    "data": {
+      "port": 33299,
+      "pid": 12345,
+      "nonce": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "productVersion": "0.1.0",
+      "apiVersion": "1.0",
+      "snapshotSchemaVersion": "1.0"
+    },
+    "requestId": "req-info-0001"
+  }
+}
+

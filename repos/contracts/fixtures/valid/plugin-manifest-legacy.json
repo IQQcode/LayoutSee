@@ -1,0 +1,12 @@
+{
+  "$schemaRef": "plugin/manifest-v1.json",
+  "value": {
+    "schemaVersion": "1.0",
+    "id": "layoutsee.legacy-demo",
+    "name": "存量插件",
+    "version": "0.9.0",
+    "entry": "index.html",
+    "platforms": ["android", "macos"],
+    "permissions": ["device.read", "snapshot.read", "network.none"]
+  }
+}

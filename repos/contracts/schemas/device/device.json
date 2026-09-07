@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/device/device.json",
+  "title": "Device",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["deviceId", "platform", "serial", "status", "capabilities", "readonly"],
+  "properties": {
+    "deviceId": { "type": "string", "minLength": 1 },
+    "platform": { "type": "string", "enum": ["android"] },
+    "serial": { "type": "string", "minLength": 1 },
+    "model": { "type": "string" },
+    "product": { "type": "string" },
+    "status": { "type": "string", "enum": ["connected", "unauthorized", "offline", "error"] },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["screenshot", "layout", "input", "apps", "media-screenshot-fallback"] }
+    },
+    "readonly": { "type": "boolean" },
+    "lastSeenAt": { "type": "integer", "minimum": 0 }
+  }
+}

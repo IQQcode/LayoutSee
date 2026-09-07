@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/common/info-envelope.json",
+  "title": "CoreInfoEnvelope",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "data", "requestId"],
+      "properties": {
+        "ok": { "const": true },
+        "data": { "$ref": "https://layoutsee.local/schemas/common/info.json" },
+        "requestId": { "type": "string", "minLength": 8 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "error", "requestId"],
+      "properties": {
+        "ok": { "const": false },
+        "error": { "$ref": "https://layoutsee.local/schemas/common/error.json" },
+        "requestId": { "type": "string", "minLength": 8 }
+      }
+    }
+  ]
+}
+

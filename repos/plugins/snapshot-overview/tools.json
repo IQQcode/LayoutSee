@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "tools": [
+    {
+      "name": "capture_then_summarize",
+      "kind": "read",
+      "description": "抓取一次布局快照并立即返回语义摘要",
+      "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+      "steps": [
+        { "call": "capture_layout", "alias": "shot" },
+        { "require": "$.shot.snapshotId", "otherwise": { "code": "SNAPSHOT_STALE", "message": "抓取未产生快照" } },
+        { "call": "get_layout_summary", "args": { "snapshotId": "$.shot.snapshotId" } }
+      ]
+    }
+  ]
+}

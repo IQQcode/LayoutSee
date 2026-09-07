@@ -1,0 +1,15 @@
+{
+  "$schemaRef": "plugin/manifest.json",
+  "$expectedError": "PERMISSION_REQUIRED",
+  "value": {
+    "schemaVersion": "2.0",
+    "id": "layoutsee.bad-plugin",
+    "name": "非法插件",
+    "version": "1.0.0",
+    "devicePlatforms": ["android"],
+    "permissions": ["device.read"],
+    "contributions": {
+      "workbenchTabs": [{ "id": "escape", "title": "逃逸", "entry": "../outside.html" }]
+    }
+  }
+}

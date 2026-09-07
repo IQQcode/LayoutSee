@@ -1,0 +1,15 @@
+{
+  "$schemaRef": "test/fake-core-scenario.json",
+  "value": {
+    "schemaVersion": "1.0",
+    "boot": { "readyDelayMs": 20, "nonceMode": "echo" },
+    "devices": [
+      { "deviceId": "android-3B161V012A600000", "platform": "android", "serial": "3B161V012A600000", "model": "PLK110", "product": "PLK110", "status": "connected", "capabilities": ["screenshot", "layout", "input", "apps", "media-screenshot-fallback"], "readonly": false }
+    ],
+    "responses": {},
+    "media": { "mode": "frames", "disconnectAfter": null },
+    "mcp": { "tools": "v0.1" },
+    "faults": [],
+    "staticAssets": { "source": "builtin" }
+  }
+}

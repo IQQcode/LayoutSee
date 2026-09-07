@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/common/info.json",
+  "title": "CoreInfo",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["port", "pid", "nonce", "productVersion", "apiVersion", "snapshotSchemaVersion"],
+  "properties": {
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "pid": { "type": "integer", "minimum": 1 },
+    "nonce": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "productVersion": { "type": "string", "const": "0.1.0" },
+    "apiVersion": { "type": "string", "const": "1.0" },
+    "snapshotSchemaVersion": { "type": "string", "const": "1.0" }
+  }
+}
+

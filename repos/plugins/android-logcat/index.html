@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <title>Android 日志抓取</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="logcat">
+    <header class="toolbar">
+      <span class="device-chip" id="device-chip" title="当前设备">设备 --</span>
+      <label class="query">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4 8h8M6.5 13h3" /></svg>
+        <input id="query" type="search" autocomplete="off" spellcheck="false"
+               placeholder="过滤：直接输入文本，或 tag:View pid:1234 level:E -tag:Noise" />
+      </label>
+      <button type="button" id="case" class="toggle" aria-pressed="false" title="区分大小写">Cc</button>
+      <label class="level">
+        <select id="level" aria-label="最低日志级别">
+          <option value="V">Verbose</option>
+          <option value="D">Debug</option>
+          <option value="I">Info</option>
+          <option value="W">Warn</option>
+          <option value="E">Error</option>
+          <option value="F">Assert</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="stage">
+      <nav class="actions" aria-label="日志操作">
+        <button type="button" data-action="clear" title="清空日志（clear logcat）" aria-label="清空日志">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h10M6.5 5V3.5h3V5M4.5 5l.6 8h5.8l.6-8" /></svg>
+        </button>
+        <button type="button" data-action="toggle" id="toggle" title="暂停抓取（pause logcat）" aria-label="暂停抓取">
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="icon-pause"><path d="M6 3.5v9M10 3.5v9" /></svg>
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="icon-play"><path d="M5 3.5l7 4.5-7 4.5z" /></svg>
+        </button>
+        <button type="button" data-action="restart" title="重新抓取（restart logcat）" aria-label="重新抓取">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.8-3.9M13 3v2.4h-2.4" /></svg>
+        </button>
+        <button type="button" data-action="tail" id="tail" title="滚动到末尾（点击某一行会停止自动滚动）" aria-label="滚动到末尾">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.8 7.6L8 10.8l3.2-3.2M3.5 13.5h9" /></svg>
+        </button>
+        <button type="button" data-action="wrap" id="wrap" title="自动换行（soft-wrap）" aria-label="自动换行">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h8.5a2 2 0 1 1 0 4H9m0 0l1.6-1.6M9 12l1.6 1.6M2.5 12h3" /></svg>
+        </button>
+        <span class="actions-gap"></span>
+        <button type="button" data-action="export" id="export" title="导出当前筛选结果" aria-label="导出">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3M4.8 7.8L8 11l3.2-3.2M3 13h10" /></svg>
+        </button>
+      </nav>
+
+      <section class="log" id="log" tabindex="0" aria-label="日志内容">
+        <div class="rows" id="rows"></div>
+        <p class="empty" id="empty">正在连接设备日志…</p>
+      </section>
+    </div>
+
+    <footer class="status">
+      <span id="state-dot" class="dot running" aria-hidden="true"></span>
+      <span id="state-text">抓取中</span>
+      <span class="sep"></span>
+      <span>显示 <b id="count-shown">0</b> / <b id="count-total">0</b> 行</span>
+      <span class="sep"></span>
+      <span id="hint" class="hint"></span>
+    </footer>
+  </div>
+
+  <script src="/plugin-runtime.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

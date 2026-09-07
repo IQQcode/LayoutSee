@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/test/fake-core-scenario.json",
+  "title": "FakeCoreScenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "boot", "devices", "responses", "media", "mcp", "faults", "staticAssets"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readyDelayMs", "nonceMode"],
+      "properties": {
+        "readyDelayMs": { "type": "integer", "minimum": 0, "maximum": 15000 },
+        "nonceMode": { "enum": ["echo", "mismatch"] }
+      }
+    },
+    "devices": { "type": "array", "items": { "$ref": "https://layoutsee.local/schemas/device/device.json" } },
+    "responses": { "type": "object", "additionalProperties": true },
+    "media": {
+      "type": "object",
+      "required": ["mode", "disconnectAfter"],
+      "properties": {
+        "mode": { "enum": ["frames", "screenshot", "unavailable"] },
+        "disconnectAfter": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "mcp": { "type": "object", "required": ["tools"], "properties": { "tools": { "const": "v0.1" } }, "additionalProperties": false },
+    "faults": { "type": "array", "items": { "type": "string" } },
+    "staticAssets": { "type": "object", "required": ["source"], "properties": { "source": { "enum": ["web-dist", "builtin"] } }, "additionalProperties": false }
+  }
+}

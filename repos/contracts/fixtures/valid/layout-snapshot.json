@@ -1,0 +1,33 @@
+{
+  "$schemaRef": "snapshot/layout-snapshot.json",
+  "value": {
+    "snapshotId": "snap-0001",
+    "deviceId": "pixel-7",
+    "createdAt": 1787875200000,
+    "foreground": { "packageName": "com.baidu.tieba", "activity": ".MainActivity" },
+    "windowSizePx": { "width": 1080, "height": 2400 },
+    "density": 3,
+    "hierarchyAccuracy": "exact",
+    "synchronization": "best_effort",
+    "screenshot": { "width": 1080, "height": 2400, "contentUrl": "/api/v1/snapshots/snap-0001/screenshot" },
+    "roots": ["root"],
+    "nodes": [
+      {
+        "nodeKey": "root",
+        "parentKey": null,
+        "depth": 0,
+        "childIndex": 0,
+        "className": "android.widget.FrameLayout",
+        "boundsPx": { "left": 0, "top": 0, "right": 1080, "bottom": 2400 },
+        "boundsNormalized": { "left": 0, "top": 0, "right": 1, "bottom": 1 },
+        "visible": true,
+        "enabled": true,
+        "clickable": false,
+        "scrollable": false,
+        "raw": { "class": "android.widget.FrameLayout" }
+      }
+    ],
+    "warnings": ["FREEZE_UNAVAILABLE"]
+  }
+}
+

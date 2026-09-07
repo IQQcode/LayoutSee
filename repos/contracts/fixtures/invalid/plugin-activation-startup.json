@@ -1,0 +1,16 @@
+{
+  "$schemaRef": "plugin/manifest.json",
+  "$expectedError": "PLUGIN_INVALID",
+  "value": {
+    "schemaVersion": "2.0",
+    "id": "layoutsee.eager-plugin",
+    "name": "启动即激活插件",
+    "version": "1.0.0",
+    "activation": "onStartup",
+    "devicePlatforms": ["android"],
+    "permissions": [],
+    "contributions": {
+      "workbenchTabs": [{ "id": "eager", "title": "抢跑", "entry": "index.html" }]
+    }
+  }
+}

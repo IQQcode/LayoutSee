@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/websocket/media-control.json",
+  "title": "MediaControlMessage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "type", "deviceId", "timestamp"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "type": { "type": "string", "enum": ["hello", "ready", "state", "heartbeat", "error"] },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "integer", "minimum": 0 },
+    "payload": { "type": "object", "additionalProperties": true }
+  }
+}
+

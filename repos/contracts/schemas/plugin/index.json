@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/plugin/index.json",
+  "title": "PluginIndex",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "directory", "generatedAt", "cacheHit", "items"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "directory": { "type": "string" },
+    "builtinDirectory": { "type": "string" },
+    "generatedAt": { "type": "integer", "minimum": 0 },
+    "cacheHit": { "type": "boolean" },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/Entry" } }
+  },
+  "$defs": {
+    "Entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "origin", "status"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 80 },
+        "version": { "type": "string" },
+        "description": { "type": "string", "maxLength": 200 },
+        "hosts": { "type": "array", "items": { "enum": ["app", "web"] } },
+        "devicePlatforms": { "type": "array", "items": { "enum": ["android", "ios", "harmony"] } },
+        "runtime": { "enum": ["iframe", "declarative"] },
+        "origin": { "enum": ["builtin", "local", "registry"] },
+        "overrides": { "enum": ["builtin"] },
+        "legacy": { "type": "boolean" },
+        "status": { "enum": ["ready", "incompatible", "invalid", "host-mismatch", "device-mismatch"] },
+        "activation": { "enum": ["onOpen", "onSnapshot", "onCommand"] },
+        "permissions": { "type": "array", "items": { "type": "string" } },
+        "grantedPermissions": { "type": "array", "items": { "type": "string" } },
+        "contributions": { "type": "object", "additionalProperties": true },
+        "error": { "$ref": "https://layoutsee.local/schemas/common/error.json" }
+      }
+    }
+  }
+}

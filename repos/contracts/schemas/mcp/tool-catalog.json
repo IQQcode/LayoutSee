@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/mcp/tool-catalog.json",
+  "title": "McpToolCatalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tools"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "tools": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "description", "inputSchema"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["read", "write"] },
+          "description": { "type": "string", "minLength": 1 },
+          "inputSchema": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

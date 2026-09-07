@@ -1,0 +1,355 @@
+openapi: 3.1.0
+info:
+  title: LayoutSee Core API
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:{port}
+    variables:
+      port:
+        default: "33299"
+paths:
+  /health/live:
+    get:
+      operationId: getLiveState
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/info:
+    get:
+      operationId: getCoreInfo
+      responses:
+        "200":
+          description: Core 身份与版本信息
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/common/info-envelope.json
+  /health/ready:
+    get:
+      operationId: getReadyState
+      responses:
+        "200":
+          description: Core 已完成自检
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ready]
+                properties:
+                  ready:
+                    const: true
+  /api/v1/devices:
+    get:
+      operationId: listDevices
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/refresh:
+    post:
+      operationId: refreshDevices
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/diagnostics:
+    get:
+      operationId: getDeviceDiagnostics
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/current-app:
+    get:
+      operationId: getCurrentApp
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/apps:
+    get:
+      operationId: listDeviceApps
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: q
+          in: query
+          required: false
+          description: 包名模糊匹配，大小写不敏感
+          schema: { type: string }
+        - name: includeSystem
+          in: query
+          required: false
+          description: 是否把系统应用一起列出；返回项的 system 字段标记来源
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/actions:
+    post:
+      operationId: executeDeviceAction
+      description: |
+        动作类型：tap、swipe、input_text、press_key、start_app、stop_app、rotate、clear_app、uninstall_app。
+        clear_app 与 uninstall_app 属于包管理写操作，只读模式下会被拦截。
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "409": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/shell:
+    post:
+      operationId: executeDeviceShell
+      description: |
+        终端：command 整串作为单个 argv 传给 adb shell，不在 Core 侧做二次分词。
+        约束：命令最长 2000 字符；timeoutMs 默认 15000、上限 60000；stdout/stderr 各截断到 256KB；
+        只读模式全禁；审计只记录命令长度与哈希，不落原文与输出。
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "403": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/logcat:
+    get:
+      operationId: getDeviceLogcat
+      description: |
+        增量读取设备日志。Core 周期 dump `logcat -d -v threadtime` 并按重叠锚点对齐，
+        只返回 after 游标之后的行；dropped=true 说明设备环形缓冲已滚过（丢日志）。
+        读日志是只读操作：不需要会话令牌，不过设备闸门，不入审计。
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: after
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "400": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/logcat/clear:
+    post:
+      operationId: clearDeviceLogcat
+      description: |
+        清空设备日志缓冲（adb logcat -c）。会影响其他观察者，按写操作对待：
+        需要会话令牌、只读模式拦截、写 ActionLog；source=plugin 时带 pluginId 以便回溯。
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "403": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/window-size:
+    get:
+      operationId: getDeviceWindowSize
+      description: 设备物理分辨率，与推流分辨率无关；工作台状态栏与坐标换算都以此为准
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/screenshot:
+    get:
+      operationId: getDeviceScreenshot
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200":
+          description: 当前设备 PNG 截图，也是实时媒体不可用时的降级接口
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+  /api/v1/devices/{deviceId}/media/capabilities:
+    get:
+      operationId: getMediaCapabilities
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/media/stream:
+    get:
+      operationId: streamDeviceMedia
+      description: scrcpy 实时画面流；不可用时前端降级到 screenshot 轮询
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200":
+          description: 视频流字节序列
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+  /api/v1/devices/{deviceId}/snapshots:
+    post:
+      operationId: captureLayoutSnapshot
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/snapshots/latest:
+    get:
+      operationId: getLatestLayoutSnapshot
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/devices/{deviceId}/readonly:
+    put:
+      operationId: setDeviceReadonly
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/snapshots/{snapshotId}:
+    get:
+      operationId: getLayoutSnapshot
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/snapshots/{snapshotId}/screenshot:
+    get:
+      operationId: getSnapshotScreenshot
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      responses:
+        "200":
+          description: 快照 PNG 截图
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+  /api/v1/snapshots/{snapshotId}/xpath:
+    post:
+      operationId: querySnapshotXpath
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/snapshots/{snapshotId}/selectors:
+    post:
+      operationId: generateSnapshotSelectors
+      description: |
+        返回候选选择器列表，每项含 kind（id、text、desc、ancestor、class）、expression、reason 与真实命中数。
+        kind 供前端「XPath by」维度筛选使用。
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/snapshots/{snapshotId}/summary:
+    post:
+      operationId: summarizeLayoutSnapshot
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/snapshots/{snapshotId}/diagnostics:
+    post:
+      operationId: diagnoseLayoutSnapshot
+      parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/settings:
+    get:
+      operationId: getSettings
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+    put:
+      operationId: updateSettings
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/paths:
+    get:
+      operationId: getCorePaths
+      description: 数据目录、日志目录与插件目录的绝对路径；浏览器宿主打不开目录，改为展示路径文本供复制
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/ui-logs:
+    post:
+      operationId: appendUiLogs
+      description: 前端把结构化 UI 日志批量回写到 Core 的日志目录
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/plugins:
+    get:
+      operationId: listPlugins
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/plugins/reload:
+    post:
+      operationId: reloadPlugins
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/plugins/index:
+    get:
+      operationId: getPluginIndex
+      parameters:
+        - name: refresh
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/plugins/{pluginId}/permissions:
+    put:
+      operationId: updatePluginPermissions
+      parameters: [{ $ref: "#/components/parameters/PluginId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "403": { $ref: "#/components/responses/JsonEnvelope" }
+  /plugin-assets/{pluginId}/{assetPath}:
+    get:
+      operationId: getPluginAsset
+      parameters:
+        - { $ref: "#/components/parameters/PluginId" }
+        - name: assetPath
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: 插件静态资源；独立严格 CSP，connect-src 为 none
+          content:
+            text/html:
+              schema: { type: string }
+        "403": { $ref: "#/components/responses/JsonEnvelope" }
+        "404": { $ref: "#/components/responses/JsonEnvelope" }
+  /api/v1/mcp/tools:
+    get:
+      operationId: listMcpTools
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /mcp/{deviceId}/tools/list:
+    get:
+      operationId: listMcpToolsForDevice
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+  /mcp/{deviceId}/tools/call:
+    post:
+      operationId: callMcpToolForDevice
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
+      responses:
+        "200": { $ref: "#/components/responses/JsonEnvelope" }
+        "409": { $ref: "#/components/responses/JsonEnvelope" }
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    SnapshotId:
+      name: snapshotId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    PluginId:
+      name: pluginId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 64 }
+  requestBodies:
+    JsonBody:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+  responses:
+    JsonEnvelope:
+      description: 统一 JSON envelope；成功为 data，失败为 error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [ok, requestId]
+            properties:
+              ok: { type: boolean }
+              data: {}
+              error: { $ref: ../schemas/common/error.json }
+              requestId: { type: string }

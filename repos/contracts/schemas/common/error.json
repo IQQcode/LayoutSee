@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://layoutsee.local/schemas/common/error.json",
+  "title": "ApiError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "message", "retryable"],
+  "properties": {
+    "code": {
+      "type": "string",
+      "enum": [
+        "DEVICE_NOT_FOUND",
+        "DEVICE_DISCONNECTED",
+        "DEVICE_OFFLINE",
+        "DEVICE_UNAUTHORIZED",
+        "ADB_NOT_FOUND",
+        "SNAPSHOT_IN_PROGRESS",
+        "SNAPSHOT_STALE",
+        "REF_NOT_FOUND",
+        "AMBIGUOUS_ELEMENT",
+        "INVALID_XPATH",
+        "READ_ONLY_MODE",
+        "DEVICE_BUSY",
+        "INVALID_ARGUMENT",
+        "MEDIA_UNAVAILABLE",
+        "PLUGIN_INVALID",
+        "PLUGIN_NOT_FOUND",
+        "PLUGIN_INCOMPATIBLE",
+        "PLUGIN_PERMISSION_DENIED",
+        "PLUGIN_RATE_LIMITED",
+        "HOST_CAPABILITY_UNAVAILABLE",
+        "PERMISSION_REQUIRED",
+        "VERSION_INCOMPATIBLE",
+        "CORE_UNAVAILABLE",
+        "OPERATION_TIMEOUT"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "retryable": { "type": "boolean" },
+    "details": { "type": "object", "additionalProperties": true }
+  }
+}

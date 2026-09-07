@@ -1,0 +1,10 @@
+{
+  "$schemaRef": "plugin/bridge.json",
+  "value": {
+    "v": 1,
+    "kind": "call",
+    "id": 7,
+    "method": "device.tap",
+    "params": { "ref": "a1b2c3d4e5" }
+  }
+}

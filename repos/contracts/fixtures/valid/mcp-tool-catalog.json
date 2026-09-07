@@ -1,0 +1,20 @@
+{
+  "$schemaRef": "mcp/tool-catalog.json",
+  "value": {
+    "schemaVersion": "1.0",
+    "tools": [
+      { "name": "get_window_size", "kind": "read", "description": "读取设备窗口尺寸", "inputSchema": { "type": "object" } },
+      { "name": "get_device_info", "kind": "read", "description": "读取设备信息", "inputSchema": { "type": "object" } },
+      { "name": "screenshot", "kind": "read", "description": "获取当前设备截图", "inputSchema": { "type": "object" } },
+      { "name": "dump_xml", "kind": "read", "description": "抓取当前布局 XML", "inputSchema": { "type": "object" } },
+      { "name": "find_elements_by_xpath", "kind": "read", "description": "按 XPath 查询当前布局", "inputSchema": { "type": "object", "required": ["xpath"], "properties": { "xpath": { "type": "string" } } } },
+      { "name": "tap", "kind": "write", "description": "点击设备坐标或元素引用", "inputSchema": { "type": "object" } },
+      { "name": "swipe", "kind": "write", "description": "在设备上执行滑动", "inputSchema": { "type": "object" } },
+      { "name": "input_text", "kind": "write", "description": "向设备输入文本", "inputSchema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } } },
+      { "name": "press_key", "kind": "write", "description": "发送设备按键", "inputSchema": { "type": "object", "required": ["key"], "properties": { "key": { "type": "string" } } } },
+      { "name": "get_layout_summary", "kind": "read", "description": "生成确定性布局摘要", "inputSchema": { "type": "object" } },
+      { "name": "diagnose_layout", "kind": "read", "description": "运行六类基础布局诊断", "inputSchema": { "type": "object" } },
+      { "name": "find_element", "kind": "read", "description": "按属性组合查找元素", "inputSchema": { "type": "object", "required": ["query"], "properties": { "query": { "type": "string" } } } }
+    ]
+  }
+}

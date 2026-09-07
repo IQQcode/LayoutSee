@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "2.0",
+  "id": "snapshot-overview",
+  "name": "快照速览",
+  "version": "1.0.0",
+  "description": "读取当前快照并给出节点统计，用于验证插件桥链路",
+  "hosts": ["app", "web"],
+  "devicePlatforms": ["android"],
+  "activation": "onOpen",
+  "runtime": "iframe",
+  "permissions": ["snapshot.read", "host.integration"],
+  "engines": { "layoutsee": ">=0.1.0" },
+  "contributions": {
+    "workbenchTabs": [
+      { "id": "overview", "title": "快照速览", "order": 700, "entry": "index.html" }
+    ],
+    "mcpTools": { "source": "tools.json" }
+  }
+}
