@@ -1,11 +1,11 @@
+# ============================================================
+# LayoutSee 仓库忽略清单
+# 原则：只提交源代码、契约、文档、设计与配置；其余一律不进仓库。
+# ============================================================
+
+# ---- 依赖与构建产物（可由源码重建，不入库）----
 node_modules/
 dist/
-.DS_Store
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-.coverage
 coverage/
 artifacts/
 *.log
@@ -15,12 +15,24 @@ repos/mac/build/
 repos/mac/release/
 repos/mac/resources/runtime/
 
-# 本地工具状态与 IDE 配置（不随仓库分发）
-.mimosa/
+# ---- Python 运行时产物 ----
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+
+# ---- 系统与 IDE 本地文件 ----
+.DS_Store
 .idea/
+
+# ---- Agent / 本地工具运行状态（会话级数据，不入库）----
+.mimosa/
 .claude/
 tmp/
 
-# 参考工程代码（仅本地工作区保留，不随仓库分发）
+# ---- 参考工程（仅本地工作区保留，勿提交）----
+# source/layoutsee-prototype：历史前端原型 + QA 截图，已完成使命
+# source/uiautodev：第三方上游 git 仓库（自带 .git，提交会产生无 .gitmodules 的 gitlink，克隆后为空目录）
 source/layoutsee-prototype/
 source/uiautodev/

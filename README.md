@@ -63,7 +63,7 @@ LayoutSee/                          ← 指挥仓根目录
 │   ├── [Story-0831]-web/           ← Web 通用端
 │   └── [Story-0831]-plugins/       ← 插件模块接口层与契约草案
 │
-├── skills/layout-inspector/        ← 业务 Skill：Android 运行时视图感知工作流
+├── skills/layout-see/              ← 业务 Skill：通过 LayoutSee MCP 读取并分析运行时视图
 ├── agents/                         ← 自定义 Subagent 定义
 ├── hooks/                          ← Hook 注册表与护栏脚本
 ├── assets/                         ← 静态素材（drawio 源文件、竞品与界面截图）
@@ -83,7 +83,7 @@ LayoutSee/                          ← 指挥仓根目录
 |-----------|------|--------|
 | `AGENTS.md` / `CLAUDE.md` | Agent 行为规范与工作规则，不写业务逻辑，只描述「Agent 在 Workspace 里如何工作」 | 团队共同维护 |
 | `docs/` | 人维护的知识：产品、设计、环境、调研、需求拆解，均为 Agent 无法从代码中直接读出的上下文 | PM / RD / FE / QA |
-| `skills/` | 业务 Skill：可执行的 Agent 能力封装，当前含 layout-inspector | 有沉淀诉求的成员 |
+| `skills/` | 业务 Skill：可执行的 Agent 能力封装，当前含 layout-see | 有沉淀诉求的成员 |
 | `hooks/` | Hook 注册表：Agent 行为的硬性护栏（如禁止改目录、强制检查、行数限制） | 工程负责人 |
 | `agents/` | 自定义 Subagent 定义，跨模块任务时隔离上下文 | 工程负责人 |
 | `repos/` | 本工程源代码：contracts（契约事实源）、core（Python 本地 Core）、web（工作台 UI）、mac（Electron 壳）、plugins（随包插件包） | RD |
@@ -100,7 +100,7 @@ LayoutSee/                          ← 指挥仓根目录
 - 想知道「某个功能的代码在哪」：读 `INDEX.md`（模块索引 + 跨工程速查 + 已知坑）
 - 想知道「某个仓库怎么构建、怎么测」：读 `source/index.md` 定位后看 `source/<repo>/setup.md` 与 `test.md`
 - 想知道「某次需求当初怎么设计的」：读 `specs/[Story-xxxx]-*/doc.md` 与 `summary.md`
-- 想解析 Android 布局快照：用 `skills/layout-inspector`
+- 想读取分析 Android 运行时布局：用 `skills/layout-see`
 - 想知道「Agent 在这里怎么工作」：读 `AGENTS.md`
 
 ## 快速开始

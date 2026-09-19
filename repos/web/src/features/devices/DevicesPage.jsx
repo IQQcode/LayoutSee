@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AndroidLogo, ArrowClockwise, Check, Copy, CursorClick, GridFour, Info, X } from "@phosphor-icons/react";
 import { api } from "../../api/client.js";
+import { MorphGlyph, glyphs } from "../../components/MorphIcons.jsx";
 import { Banner, Button, Dialog, EmptyState, IconButton, Spinner, StatusPill, useToast } from "../../components/ui.jsx";
+import { PlatformPlaceholder } from "./PlatformPlaceholder.jsx";
 
 const STATUS_TEXT = {
   connected: "已连接",
@@ -18,6 +20,27 @@ const STATUS_TONE = {
   error: "danger",
 };
 
+// 平台 Tab：Android 已实现；iOS / HarmonyOS 先给占位与预告，不做功能实现
+const PLATFORMS = [
+  { id: "android", label: "Android" },
+  {
+    id: "ios",
+    label: "iOS",
+    glyph: glyphs.platformIos,
+    headline: "iOS 支持正在路上",
+    note: "设备接入 · 敬请期待",
+    detail: "V0.1 先把 Android 真机链路做扎实：发现、投屏、抓取、定位。iOS 的接入会沿用同一套快照与元素模型，正在设计中。",
+  },
+  {
+    id: "harmony",
+    label: "HarmonyOS",
+    glyph: glyphs.platformHarmony,
+    headline: "HarmonyOS 支持正在路上",
+    note: "设备接入 · 敬请期待",
+    detail: "HarmonyOS NEXT 的调试链路与 Android 差异较大，我们会在 Android 体验稳定后单独评估，当前还没有可交付的版本。",
+  },
+];
+
 export function DevicesPage() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -27,6 +50,7 @@ export function DevicesPage() {
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(() => new Set(JSON.parse(sessionStorage.getItem("layoutsee.groupSelection") || "[]")));
   const [diagnosticsFor, setDiagnosticsFor] = useState(null);
+  const [platform, setPlatform] = useState("android");
 
   const load = useCallback(async ({ manual = false } = {}) => {
     if (manual) setRefreshing(true);
@@ -86,9 +110,33 @@ export function DevicesPage() {
         </div>
       </div>
 
-      <div className="platform-tabs" role="tablist">
-        <button className="active" role="tab" aria-selected="true"><AndroidLogo size={16} aria-hidden="true" />Android {devices.length > 0 ? <span>{devices.length}</span> : null}</button>
+      <div className="platform-tabs" role="tablist" aria-label="设备平台">
+        {PLATFORMS.map((item) => (
+          <button
+            key={item.id}
+            role="tab"
+            aria-selected={platform === item.id}
+            className={platform === item.id ? "active" : ""}
+            onClick={() => setPlatform(item.id)}
+          >
+            {item.id === "android"
+              ? <AndroidLogo size={16} aria-hidden="true" />
+              : <MorphGlyph icon={item.glyph} size={16} strokeWidth={1.8} />}
+            {item.label}
+            {item.id === "android" && devices.length > 0 ? <span>{devices.length}</span> : null}
+            {item.id !== "android" ? <em>预告</em> : null}
+          </button>
+        ))}
       </div>
+
+      {platform !== "android" ? (
+        <PlatformPlaceholder
+          key={platform}
+          platform={PLATFORMS.find((item) => item.id === platform)}
+          onBackToAndroid={() => setPlatform("android")}
+        />
+      ) : (
+      <>
 
       {error ? (
         <Banner tone="danger" icon={Info}>
@@ -159,6 +207,9 @@ export function DevicesPage() {
             <span className="muted">{data?.lastError ? `最近错误：${data.lastError}` : data?.refreshedAt ? `最近刷新：${new Date(data.refreshedAt).toLocaleTimeString()}` : ""}</span>
           </div>
         </section>
+      )}
+
+      </>
       )}
 
       <DiagnosticsDialog deviceId={diagnosticsFor} onClose={() => setDiagnosticsFor(null)} />

@@ -14,12 +14,12 @@ from .logcat import LogcatHub
 from .media import MediaHub
 from .mcp_catalog import ToolDispatcher
 from .plugins import PluginRegistry
-from .server import CoreContext, bind_server, derive_session_token
+from .server import DEFAULT_PORT_START, CoreContext, bind_server, derive_session_token
 from .settings import SettingsStore, default_data_dir
 from .snapshots import CaptureCoordinator, SnapshotStore
 from .uilogs import UiLogStore
 
-PRODUCT_VERSION = "0.1.0"
+PRODUCT_VERSION = "22.6.1"
 
 
 def builtin_plugins_dir() -> Path:
@@ -37,7 +37,7 @@ def builtin_plugins_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "plugins"
 
 
-def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None = None, port_start: int = 33299):
+def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None = None, port_start: int = DEFAULT_PORT_START):
     """创建全部服务并原子绑定回环端口；返回 (context, server)。"""
     data_dir = data_dir or default_data_dir()
     settings = SettingsStore(data_dir)

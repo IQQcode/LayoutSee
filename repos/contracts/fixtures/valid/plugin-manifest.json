@@ -6,7 +6,7 @@
     "name": "节点选择器助手",
     "description": "从当前快照生成稳定选择器并一键点击",
     "version": "1.0.0",
-    "engines": { "layoutsee": ">=0.1.0 <0.3.0" },
+    "engines": { "layoutsee": ">=22.6.1 <23.0.0" },
     "hosts": ["app", "web"],
     "devicePlatforms": ["android"],
     "activation": "onOpen",

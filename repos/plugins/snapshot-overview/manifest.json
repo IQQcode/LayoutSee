@@ -9,7 +9,7 @@
   "activation": "onOpen",
   "runtime": "iframe",
   "permissions": ["snapshot.read", "host.integration"],
-  "engines": { "layoutsee": ">=0.1.0" },
+  "engines": { "layoutsee": ">=22.6.1 <23.0.0" },
   "contributions": {
     "workbenchTabs": [
       { "id": "overview", "title": "快照速览", "order": 700, "entry": "index.html" }

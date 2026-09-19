@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// dev 下 API 不在 vite 里，代理到 dev:web 拉起的 Core（默认端口 33299）
-const corePort = Number(process.env.LAYOUTSEE_CORE_PORT) || 33299;
+// dev 下 API 不在 vite 里，代理到 dev:web 拉起的 Core（默认端口 11663）
+const corePort = Number(process.env.LAYOUTSEE_CORE_PORT) || 11663;
 const coreTarget = `http://127.0.0.1:${corePort}`;
 
 // Core 会校验 Host 与 Origin。changeOrigin 把 Host 改成 Core 的地址；

@@ -1,10 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { CheckCircle, WarningCircle, XCircle, X } from "@phosphor-icons/react";
+import { MorphGlyph } from "./MorphIcons.jsx";
 
-export function Button({ children, icon: Icon, variant = "", compact = false, loading = false, className = "", ...props }) {
+// icon 既可是图标组件（Phosphor 等），也可是 Lucide 图标数据（数组，交给 MorphGlyph）。
+// 传数据却按组件渲染会直接抛 React #130，这里统一兜住。
+export function Button({ children, icon, variant = "", compact = false, loading = false, className = "", ...props }) {
+  const isData = Array.isArray(icon);
+  const Icon = isData ? null : icon;
   return (
     <button className={`button ${variant} ${compact ? "compact" : ""} ${loading ? "loading" : ""} ${className}`} {...props}>
-      {loading ? <span className="spinner" aria-hidden="true" /> : Icon ? <Icon size={15} weight="regular" aria-hidden="true" /> : null}
+      {loading ? (
+        <span className="spinner" aria-hidden="true" />
+      ) : isData ? (
+        <MorphGlyph icon={icon} size={15} strokeWidth={1.9} />
+      ) : Icon ? (
+        <Icon size={15} weight="regular" aria-hidden="true" />
+      ) : null}
       {children ? <span>{children}</span> : null}
     </button>
   );
@@ -18,7 +29,7 @@ export function IconButton({ icon: Icon, label, active = false, danger = false, 
       title={tooltip || label}
       {...props}
     >
-      <Icon size={18} weight="regular" aria-hidden="true" />
+      {Icon ? <Icon size={18} weight="regular" aria-hidden="true" /> : null}
       {children}
     </button>
   );

@@ -10,7 +10,7 @@
 
 ## 背景与目标
 
-mac 桌面壳已可用，但 Web 端只在「壳内」可用：`session token` 唯一来源是 `window.layoutSeeShell.getKernelSession()`（`web/app/ShellBridge.js:16`），浏览器直接打开 `http://127.0.0.1:33299` 时 token 为 `null`，`_require_session()` 会拒绝抓取快照、点击注入、只读切换、设置保存与日志上报（`core/server.py:185`）。也就是说当前浏览器里只剩「看设备列表 + 看实时画面」，核心链路全废。
+mac 桌面壳已可用，但 Web 端只在「壳内」可用：`session token` 唯一来源是 `window.layoutSeeShell.getKernelSession()`（`web/app/ShellBridge.js:16`），浏览器直接打开 `http://127.0.0.1:11663` 时 token 为 `null`，`_require_session()` 会拒绝抓取快照、点击注入、只读切换、设置保存与日志上报（`core/server.py:185`）。也就是说当前浏览器里只剩「看设备列表 + 看实时画面」，核心链路全废。
 
 本次目标是让浏览器成为与桌面壳对等的一等宿主，同时按 uiautodev 的功能与手感补齐三块能力。
 

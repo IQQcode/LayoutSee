@@ -8,6 +8,7 @@ import queue
 import re
 import struct
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -91,12 +92,47 @@ def struct_pack_keepalive() -> bytes:
     return struct.pack(">QI", 0, 0)
 
 
+@dataclass
+class _McpSession:
+    """一条 MCP SSE 长连接的回推通道。outbox 里放序列化好的 JSON-RPC 响应，None 表示收摊。"""
+    session_id: str
+    device_id: str
+    outbox: "queue.Queue[str | None]"
+
+
+class McpSseHub:
+    """MCP over SSE 会话注册表：POST 线程按 sessionId 把响应投递给对应 SSE 线程。
+
+    标准 MCP HTTP+SSE 传输里，工具调用响应要走 SSE 通道推回，POST 只回 202。
+    没有 sessionId 的调用（脚本直连）不进这里，仍由 _mcp_message 同步写 body。
+    """
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, _McpSession] = {}
+        self._lock = threading.Lock()
+
+    def open(self, device_id: str) -> _McpSession:
+        session = _McpSession(uuid.uuid4().hex, device_id, queue.Queue(maxsize=64))
+        with self._lock:
+            self._sessions[session.session_id] = session
+        return session
+
+    def close(self, session_id: str) -> None:
+        with self._lock:
+            self._sessions.pop(session_id, None)
+
+    def get(self, session_id: str) -> _McpSession | None:
+        with self._lock:
+            return self._sessions.get(session_id)
+
+
 class LoopbackServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
     def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler], *, context: CoreContext):
         super().__init__(address, handler)
         self.context = context
+        self.mcp_hub = McpSseHub()
 
 
 class CoreRequestHandler(BaseHTTPRequestHandler):
@@ -430,7 +466,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             if sub == "summary":
                 from .summary import summarize
 
-                self._envelope(summarize(record, snapshot_id))
+                self._envelope(summarize(record, snapshot_id, max_tokens=body.get("maxTokens")))
                 return
             if sub == "diagnostics":
                 from .diagnostics import diagnose
@@ -789,21 +825,32 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
 
     def _mcp_sse(self, device_id: str) -> None:
         self.context.registry.device(device_id)
+        session = self.server.mcp_hub.open(device_id)
+        self.close_connection = True  # SSE 长连接不复用 keep-alive，避免阻塞占住 handler
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache, no-transform")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
-        endpoint = f"/mcp/{device_id}/message"
-        self.wfile.write(f"event: endpoint\ndata: {endpoint}\n\n".encode("utf-8"))
-        self.wfile.flush()
+        endpoint = f"/mcp/{device_id}/message?sessionId={session.session_id}"
         try:
+            self.wfile.write(f"event: endpoint\ndata: {endpoint}\n\n".encode("utf-8"))
+            self.wfile.flush()
             while True:
-                time.sleep(15)
-                self.wfile.write(b": keep-alive\n\n")
+                try:
+                    message = session.outbox.get(timeout=15)
+                except queue.Empty:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                    continue
+                if message is None:
+                    break
+                self.wfile.write(f"event: message\ndata: {message}\n\n".encode("utf-8"))
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             return
+        finally:
+            self.server.mcp_hub.close(session.session_id)
 
     def _mcp_message(self, device_id: str) -> None:
         try:
@@ -821,7 +868,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 response["result"] = {
                     "protocolVersion": str(params.get("protocolVersion") or "2024-11-05"),
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "layoutsee", "version": "0.1.0"},
+                    "serverInfo": {"name": "layoutsee", "version": "22.6.1"},
                 }
             elif method == "notifications/initialized":
                 self._json(HTTPStatus.ACCEPTED, {})
@@ -844,10 +891,26 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 response["error"] = {"code": -32601, "message": f"Method not found: {method}"}
         except CoreError as error:
             response["error"] = {"code": -32603, "message": error.message}
+        self._deliver_mcp_response(response)
+
+    def _deliver_mcp_response(self, response: dict[str, object]) -> None:
+        """带 sessionId 走 SSE 回推（POST 回 202），否则同步写 body 兼容脚本直连。"""
+        session_id = parse_qs(urlparse(self.path).query).get("sessionId", [""])[0]
+        session = self.server.mcp_hub.get(session_id) if session_id else None
+        if session is not None:
+            try:
+                session.outbox.put(json.dumps(response, ensure_ascii=False), timeout=5)
+                self._json(HTTPStatus.ACCEPTED, {})
+                return
+            except queue.Full:
+                pass  # 队列积压时退回 body 同步返回，别把 POST 卡死
         self._json(HTTPStatus.OK, response)
 
 
-def bind_server(context: CoreContext, port_start: int = 33299, attempts: int = 10) -> LoopbackServer:
+DEFAULT_PORT_START = 11663
+
+
+def bind_server(context: CoreContext, port_start: int = DEFAULT_PORT_START, attempts: int = 10) -> LoopbackServer:
     last_error: OSError | None = None
     for port in range(port_start, port_start + attempts):
         try:

@@ -4,7 +4,7 @@
   "name": "Android日志抓取",
   "description": "图形化过滤 adb logcat：级别与 tag/pid 过滤、暂停继续、清空重抓、自动滚动与换行，交互对齐 Android Studio",
   "version": "1.0.0",
-  "engines": { "layoutsee": ">=0.1.0 <0.3.0" },
+  "engines": { "layoutsee": ">=22.6.1 <23.0.0" },
   "hosts": ["app"],
   "devicePlatforms": ["android"],
   "activation": "onOpen",

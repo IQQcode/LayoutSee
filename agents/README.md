@@ -13,7 +13,7 @@
 | 候选角色 | 适用场景 |
 |---------|---------|
 | layout-qa | 基于 LayoutSee 快照与 design 规范做还原度检查，产出结构化走查报告 |
-| prototype-builder | 按设计规范批量生成前端原型页面，复用 `skills/layout-inspector` 的能力 |
+| prototype-builder | 按设计规范批量生成前端原型页面，复用 `skills/layout-see` 的能力 |
 | cross-repo-debugger | 跨 layoutsee-prototype / uiautodev 排查链路问题时隔离上下文 |
 
 > 每个自定义 Agent 建一个子目录，例如 `agents/layout-qa/agent.md`。定义完成后通过 `.claude/agents` 软链即可被 Claude Code 生态识别。

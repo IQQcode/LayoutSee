@@ -166,25 +166,116 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 }
 .platform-tabs button.active { color: var(--ls-color-brand); border-bottom-color: var(--ls-color-brand); font-weight: 600; }
 .platform-tabs button:disabled { color: var(--ls-color-text-tertiary); cursor: default; }
-.platform-tabs em { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--ls-color-bg-subtle); }
+.platform-tabs em { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--ls-color-bg-subtle); color: var(--ls-color-text-tertiary); }
+.platform-tabs button.active em { background: var(--ls-color-bg-selected); color: var(--ls-color-brand); }
+
+/* ============ 未开放平台占位 ============ */
+.platform-placeholder {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 56px 32px 48px;
+  border: 1px solid var(--ls-color-border-default); border-radius: 14px;
+  background: var(--ls-color-bg-panel); overflow: hidden;
+}
+/* 图标后方柔光，轻微呼吸 */
+.platform-placeholder::before {
+  content: ""; position: absolute; left: 50%; top: 26px; width: 320px; height: 320px;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--ls-color-brand) 13%, transparent), transparent 70%);
+  animation: placeholder-halo 5.5s var(--ls-ease-default) infinite;
+  pointer-events: none;
+}
+@keyframes placeholder-halo {
+  0%, 100% { opacity: .55; transform: translateX(-50%) scale(1); }
+  50% { opacity: .95; transform: translateX(-50%) scale(1.08); }
+}
+.platform-placeholder-glyph {
+  position: relative; display: grid; place-items: center; width: 74px; height: 74px;
+  margin-bottom: 22px; border-radius: 22px;
+  border: 1px solid var(--ls-color-border-default);
+  background: var(--ls-color-bg-elevated);
+  color: var(--ls-color-brand);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .07);
+}
+.platform-placeholder-glyph .halo {
+  position: absolute; inset: -8px; border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--ls-color-brand) 26%, transparent);
+  animation: placeholder-ring 3.6s var(--ls-ease-default) infinite;
+}
+@keyframes placeholder-ring {
+  0% { opacity: .7; transform: scale(.94); }
+  70% { opacity: 0; transform: scale(1.12); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+.platform-placeholder-title { margin: 0; font-size: 21px; letter-spacing: -.02em; }
+.platform-placeholder-shiny { margin: 12px 0 0; }
+.platform-placeholder-detail {
+  margin: 14px 0 0; max-width: 460px; line-height: 1.75;
+  color: var(--ls-color-text-secondary); font-size: 13px;
+}
+.platform-placeholder-actions { margin-top: 22px; }
+.platform-placeholder-list {
+  display: grid; gap: 9px; margin: 30px 0 0; padding: 18px 22px;
+  list-style: none; text-align: left; width: min(420px, 100%);
+  border: 1px solid var(--ls-color-border-default); border-radius: 12px;
+  background: var(--ls-color-bg-subtle);
+}
+.platform-placeholder-list li { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ls-color-text-secondary); }
+.platform-placeholder-list .dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--ls-color-text-tertiary); flex: 0 0 auto;
+}
+.platform-placeholder-footnote { margin: 14px 0 0; font-size: 11.5px; color: var(--ls-color-text-tertiary); }
+
+/* reactbits BlurText 风格：逐词从模糊解析清晰（错峰靠内联 animation-delay） */
+.blur-words { display: inline; }
+.blur-word { display: inline-block; margin-right: .28em; animation: blur-word-in .62s var(--ls-ease-default) both; }
+.blur-words-slow .blur-word { animation-duration: .78s; }
+@keyframes blur-word-in {
+  0% { opacity: 0; filter: blur(9px); transform: translateY(-6px); }
+  55% { opacity: .55; filter: blur(4px); transform: translateY(1px); }
+  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+/* reactbits ShinyText 风格：金属光泽扫过文字 */
+.shiny-text {
+  font-size: 12px; font-weight: 500; letter-spacing: .04em;
+  background: linear-gradient(100deg,
+    var(--ls-color-text-tertiary) 35%,
+    var(--ls-color-text-primary) 50%,
+    var(--ls-color-text-tertiary) 65%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  animation: shiny-sweep 3.4s linear infinite;
+}
+@keyframes shiny-sweep {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-placeholder::before,
+  .platform-placeholder-glyph .halo,
+  .shiny-text { animation: none; }
+  .blur-word { animation: none; opacity: 1; filter: none; transform: none; }
+  .shiny-text { color: var(--ls-color-text-secondary); background: none; -webkit-background-clip: initial; background-clip: initial; }
+}
 
 .table-card { border: 1px solid var(--ls-color-border-default); border-radius: 12px; background: var(--ls-color-bg-panel); overflow-x: auto; overflow-y: hidden; }
 .device-table { display: grid; grid-template-columns: 44px 110px minmax(180px, 1.4fr) minmax(110px, 1fr) minmax(90px, 1fr) 120px 150px; align-items: center; padding: 0 18px; column-gap: 10px; min-width: 780px; }
 .device-table .align-right { width: 100%; }
-/* 操作列在横向滚动时始终吸右可见 */
-/* 操作列表头与按钮同为 sticky 且同宽居中：无论滚动与否中心始终对齐，距右缘留 12px */
+/* 操作列在横向滚动时始终吸右可见；表头与按钮同宽居中，中心恒定对齐，距右缘留 12px */
 .device-table .align-right, .device-table .row-actions {
   position: sticky; right: 12px; width: 150px; justify-self: center;
   display: flex; align-items: center; justify-content: center;
-  text-align: center; background: var(--ls-color-bg-panel);
+  text-align: center;
 }
-.table-row .row-actions { box-shadow: inset 8px 0 8px -8px rgba(0, 0, 0, .06); }
-.table-head .align-right { z-index: 1; }
-.table-row:hover .row-actions { background: var(--ls-color-bg-hover); }
+/* 表头用面板色；行内粘性列继承行底色——半透明 hover 若父子各画一层会叠出灰条 */
+.table-head .align-right { background-color: var(--ls-color-bg-panel); z-index: 1; }
+.table-row .row-actions { background-color: inherit; box-shadow: inset 8px 0 8px -8px rgba(0, 0, 0, .06); }
 .table-head { height: 38px; color: var(--ls-color-text-tertiary); font-size: 12px; border-bottom: 1px solid var(--ls-color-border-default); }
-.table-row { min-height: 58px; border-bottom: 1px solid var(--ls-color-border-default); font-size: 12.5px; }
+.table-row { min-height: 58px; border-bottom: 1px solid var(--ls-color-border-default); font-size: 12.5px; background-color: var(--ls-color-row-bg); }
 .table-row:last-child { border-bottom: none; }
-.table-row:hover { background: var(--ls-color-bg-hover); }
+.table-row:hover { background-color: var(--ls-color-row-bg-hover); }
 .muted { color: var(--ls-color-text-tertiary); }
 .platform-cell { display: flex; align-items: center; gap: 8px; }
 .platform-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; background: var(--ls-color-bg-subtle); }
@@ -287,6 +378,17 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 @keyframes rail-tooltip-in {
   from { opacity: 0; transform: translateY(-50%) translateX(-5px); }
   to { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+/* morphicons 图标：形状由库做弹簧变形，这里只补旋转与对齐 */
+.morph-glyph { display: block; color: inherit; }
+.morph-glyph.is-spinning { animation: morph-glyph-spin 1s linear infinite; transform-origin: 50% 50%; }
+@keyframes morph-glyph-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .morph-glyph.is-spinning { animation: none; }
 }
 .kernel-dot { width: 9px; height: 9px; margin: 8px 0 14px; border-radius: 50%; background: var(--ls-color-success); }
 .kernel-dot.offline { background: var(--ls-color-text-tertiary); }

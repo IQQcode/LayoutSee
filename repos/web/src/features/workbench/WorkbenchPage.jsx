@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowLeft, ArrowsClockwise, Camera, CaretLeft, Code, Copy, Crosshair, House,
-  LockKey, LockKeyOpen, PlugsConnected, Power, PuzzlePiece, Rows, Snowflake,
-  Sparkle, SpeakerHigh, SpeakerLow, SquaresFour,
-} from "@phosphor-icons/react";
+import { CaretLeft, Copy } from "@phosphor-icons/react";
 import { api } from "../../api/client.js";
 import { LogTags, uiLog, uiLogApi } from "../../api/logger.js";
+import { MorphGlyph, glyphs } from "../../components/MorphIcons.jsx";
 import { ResizeHandle, clamp } from "../../components/ResizeHandle.jsx";
 import { useToast } from "../../components/ui.jsx";
 import { PluginSlot } from "../plugins/PluginSlot.jsx";
@@ -26,46 +23,69 @@ const DEFAULT_SHARE = 0.44;
 const TAB_IDS = ["common", "element", "mcp", "plugins", "intelligence"];
 const TAB_LABELS = { common: "常用", plugins: "插件", element: "元素查看", mcp: "MCP", intelligence: "布局智能" };
 
-function RailButton({ icon: Icon, label, active, danger, disabled, onClick }) {
+// 图标用 morphicons：icon 变化即弹性变形；pulseIcon 用于一次性动作（按一下变形再变回）
+function RailButton({ icon, pulseIcon, pulseMs = 900, label, active, danger, disabled, spinning = false, onClick }) {
   const [hover, setHover] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const handleClick = (event) => {
+    if (pulseIcon && !disabled) {
+      setPulsing(true);
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => setPulsing(false), pulseMs);
+    }
+    onClick?.(event);
+  };
   return (
     <button
       type="button"
       className={`rail-icon-button ${active ? (danger ? "is-danger" : "is-active") : ""}`}
       aria-label={label}
       disabled={disabled}
-      onClick={onClick}
+      onClick={handleClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <Icon size={19} aria-hidden="true" />
+      <MorphGlyph icon={pulsing && pulseIcon ? pulseIcon : icon} size={19} spinning={spinning} />
       {hover ? <span className="rail-tooltip" role="tooltip">{label}</span> : null}
     </button>
   );
 }
 
-export function ControlRail({ device, onBack, onAction, readonly, frozen, inspect, tab, onTab, snapshotView }) {
+export function ControlRail({ device, onBack, onAction, readonly, frozen, inspect, tab, onTab, snapshotView, capturing, captureDone }) {
   const press = (key) => onAction({ type: "press_key", key });
   const writeDisabled = Boolean(readonly || frozen || device?.status !== "connected");
   const snapshotLocked = Boolean(snapshotView);
+  // 抓取按钮三段式：待命相机 → 抓取中旋转加载 → 完成对勾
+  const captureIcon = capturing ? glyphs.captureBusy : captureDone ? glyphs.captureDone : glyphs.capture;
+  // 旋转按钮交替方向：与设备下次旋转方向对应
+  const [rotateCcw, setRotateCcw] = useState(false);
   return (
     <aside className="control-rail" aria-label="设备控制轨">
-      <RailButton icon={ArrowLeft} label="返回设备列表" onClick={onBack} />
-      <RailButton icon={House} label="Home" disabled={writeDisabled || snapshotLocked} onClick={() => press("HOME")} />
-      <RailButton icon={Rows} label="最近任务" disabled={writeDisabled || snapshotLocked} onClick={() => press("RECENTS")} />
+      <RailButton icon={glyphs.back} label="返回设备列表" onClick={onBack} />
+      <RailButton icon={glyphs.home} label="Home" disabled={writeDisabled || snapshotLocked} onClick={() => press("HOME")} />
+      <RailButton icon={glyphs.recents} label="最近任务" disabled={writeDisabled || snapshotLocked} onClick={() => press("RECENTS")} />
       <div className="rail-divider" />
-      <RailButton icon={Power} label="电源键" disabled={writeDisabled || snapshotLocked} onClick={() => press("POWER")} />
-      <RailButton icon={SpeakerHigh} label="音量增大" disabled={writeDisabled || snapshotLocked} onClick={() => press("VOLUME_UP")} />
-      <RailButton icon={SpeakerLow} label="音量减小" disabled={writeDisabled || snapshotLocked} onClick={() => press("VOLUME_DOWN")} />
-      <RailButton icon={ArrowsClockwise} label="旋转屏幕" disabled={writeDisabled || snapshotLocked} onClick={() => onAction({ type: "rotate" })} />
+      <RailButton icon={glyphs.power} label="电源键" disabled={writeDisabled || snapshotLocked} onClick={() => press("POWER")} />
+      {/* 音量：图标随档位变形，直观表达音量增减 */}
+      <RailButton icon={glyphs.volumeLow} pulseIcon={glyphs.volumeUp} label="音量增大" disabled={writeDisabled || snapshotLocked} onClick={() => press("VOLUME_UP")} />
+      <RailButton icon={glyphs.volumeUp} pulseIcon={glyphs.volumeDown} label="音量减小" disabled={writeDisabled || snapshotLocked} onClick={() => press("VOLUME_DOWN")} />
+      <RailButton
+        icon={rotateCcw ? glyphs.rotateCcw : glyphs.rotateCw}
+        pulseIcon={rotateCcw ? glyphs.rotateCw : glyphs.rotateCcw}
+        label="旋转屏幕"
+        disabled={writeDisabled || snapshotLocked}
+        onClick={() => { setRotateCcw((v) => !v); onAction({ type: "rotate" }); }}
+      />
       <div className="rail-divider" />
-      <RailButton icon={Camera} label="抓取布局快照" disabled={device?.status !== "connected"} active={snapshotView} onClick={() => onAction({ type: "capture" })} />
-      <RailButton icon={Snowflake} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
-      <RailButton icon={readonly ? LockKey : LockKeyOpen} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
-      <RailButton icon={Crosshair} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
+      <RailButton icon={captureIcon} label="抓取布局快照" disabled={device?.status !== "connected"} active={snapshotView} spinning={capturing} onClick={() => onAction({ type: "capture" })} />
+      <RailButton icon={frozen ? glyphs.thaw : glyphs.freeze} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
+      <RailButton icon={readonly ? glyphs.unlocked : glyphs.locked} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
+      <RailButton icon={inspect ? glyphs.browse : glyphs.inspect} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
       <div className="rail-divider" />
       {TAB_IDS.map((id) => (
-        <RailButton key={id} icon={TabIcon(id)} label={TAB_LABELS[id]} active={tab === id || (id === "plugins" && (isPluginTab(tab) || tab === "terminal"))} onClick={() => onTab(id)} />
+        <RailButton key={id} icon={TabIcon(id, tab === id)} label={TAB_LABELS[id]} active={tab === id || (id === "plugins" && (isPluginTab(tab) || tab === "terminal"))} onClick={() => onTab(id)} />
       ))}
       <div className="rail-spacer" />
       <span className={`kernel-dot ${device?.status === "connected" ? "" : "offline"}`} title="设备状态" aria-label={device?.status === "connected" ? "设备在线" : "设备离线"} />
@@ -73,14 +93,15 @@ export function ControlRail({ device, onBack, onAction, readonly, frozen, inspec
   );
 }
 
-function TabIcon(id) {
+// Tab 图标在选中时变形为「展开态」，让切换有形状反馈
+function TabIcon(id, active) {
   switch (id) {
-    case "common": return SquaresFour;
-    case "plugins": return PuzzlePiece;
-    case "element": return Code;
-    case "mcp": return PlugsConnected;
-    case "intelligence": return Sparkle;
-    default: return SquaresFour;
+    case "common": return active ? glyphs.tabCommonActive : glyphs.tabCommon;
+    case "plugins": return active ? glyphs.tabPluginsActive : glyphs.tabPlugins;
+    case "element": return active ? glyphs.tabElementActive : glyphs.tabElement;
+    case "mcp": return active ? glyphs.tabMcpActive : glyphs.tabMcp;
+    case "intelligence": return active ? glyphs.tabIntelligenceActive : glyphs.tabIntelligence;
+    default: return glyphs.tabCommon;
   }
 }
 
@@ -96,6 +117,7 @@ export function WorkbenchPage() {
   const [snapshotData, setSnapshotData] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [capturing, setCapturing] = useState(false);
+  const [captureDone, setCaptureDone] = useState(false);
   const [highlights, setHighlights] = useState({});
   const [viewMode, setViewMode] = useState("live");
   const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
@@ -227,6 +249,9 @@ export function WorkbenchPage() {
       setSelectedNode(null);
       setHighlights({});
       setViewMode("snapshot");
+      // 控制轨相机图标短暂变为对勾，给抓取一个完成反馈
+      setCaptureDone(true);
+      window.setTimeout(() => setCaptureDone(false), 1800);
       uiLog(LogTags.workbench, "快照就绪", "info", `${meta.snapshotId} · ${meta.nodeCount} 节点 · ${Math.round(performance.now() - started)}ms${meta.warnings?.length ? ` · 警告 ${meta.warnings[0]}` : ""}`);
       if (meta.warnings?.length) toast(`快照完成：${meta.warnings[0]}`, "warning");
       else toast(`快照完成，共 ${meta.nodeCount} 个节点`);
@@ -350,7 +375,7 @@ export function WorkbenchPage() {
         <div className="brand-lockup">
           <img className="brand-mark" src="/layoutsee-icon-192.png" alt="" aria-hidden="true" />
           <span>LayoutSee</span>
-          <span className="version-chip">V0.1</span>
+          <span className="version-chip">V22.6.1</span>
         </div>
       </header>
       <div className="workspace-body">
@@ -364,6 +389,8 @@ export function WorkbenchPage() {
         tab={tab}
         onTab={setTab}
         snapshotView={viewMode === "snapshot"}
+        capturing={capturing}
+        captureDone={captureDone}
       />
       <div className="device-stage" style={{ flex: `0 0 ${deviceWidth ?? defaultDeviceWidth}px`, maxWidth: DEVICE_MAX }}>
         <div className="device-info-bar">

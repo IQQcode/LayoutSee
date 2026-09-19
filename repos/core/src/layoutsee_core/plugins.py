@@ -99,7 +99,7 @@ def normalize_manifest(raw: object, product_version: str) -> dict[str, object]:
 
 
 class PluginRegistry:
-    def __init__(self, plugins_dir: Path, builtin_dir: Path | None = None, product_version: str = "0.1.0") -> None:
+    def __init__(self, plugins_dir: Path, builtin_dir: Path | None = None, product_version: str = "22.6.1") -> None:
         self.plugins_dir = Path(plugins_dir)
         self.builtin_dir = Path(builtin_dir) if builtin_dir else None
         self.product_version = product_version

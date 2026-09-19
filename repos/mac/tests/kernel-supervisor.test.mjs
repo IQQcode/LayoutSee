@@ -5,10 +5,10 @@ import { KernelSupervisor } from "../src/main/kernel-supervisor.mjs";
 
 const nonce = "a".repeat(64);
 const readyValue = {
-  port: 33299,
+  port: 11663,
   pid: 4242,
   nonce,
-  productVersion: "0.1.0",
+  productVersion: "22.6.1",
   apiVersion: "1.0",
   snapshotSchemaVersion: "1.0",
 };
@@ -61,7 +61,7 @@ test("首次 READY 超时后自动重试并成功进入 ready", async () => {
   const readyTimer = setInterval(() => readyChild.emitReady(), 50);
   try {
     const origin = await supervisor.start();
-    assert.equal(origin, "http://127.0.0.1:33299");
+    assert.equal(origin, "http://127.0.0.1:11663");
     assert.equal(spawnCount(), 2);
     assert.equal(supervisor.state, "ready");
     assert.match(supervisor.sessionToken(), /^[a-f0-9]{64}$/);

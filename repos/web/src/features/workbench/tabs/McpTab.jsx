@@ -30,7 +30,7 @@ export function McpTab({ device, deviceId, readonly, onToast }) {
     };
   }, []);
 
-  const port = window.location.port || "33299";
+  const port = window.location.port || "11663";
   const endpoint = `http://127.0.0.1:${port}/mcp/${deviceId}/sse`;
 
   const snippets = useMemo(() => ({

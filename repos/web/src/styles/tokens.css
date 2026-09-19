@@ -5,6 +5,9 @@
   --ls-color-bg-panel: #fcfcfd;
   --ls-color-bg-subtle: #f1f2f4;
   --ls-color-bg-hover: rgba(29, 29, 31, .05);
+  /* 表格行：半透明 hover 在「行 + 粘性操作列」两层叠加会显出灰条，故单独给不透明等价色 */
+  --ls-color-row-bg: #fcfcfd;
+  --ls-color-row-bg-hover: #f0f0f1;
   --ls-color-bg-selected: rgba(0, 113, 227, .10);
   --ls-color-bg-elevated: #fcfcfd;
   --ls-color-bg-canvas: #f3f4f6;
@@ -53,6 +56,8 @@
   --ls-color-bg-panel: #1c1c1e;
   --ls-color-bg-subtle: #262629;
   --ls-color-bg-hover: rgba(248, 248, 250, .08);
+  --ls-color-row-bg: #1c1c1e;
+  --ls-color-row-bg-hover: #2e2e30;
   --ls-color-bg-selected: rgba(10, 132, 255, .20);
   --ls-color-bg-elevated: #2c2c2e;
   --ls-color-bg-canvas: #101012;

@@ -4,10 +4,10 @@ import { deriveSessionToken, parseReadyLine, verifyInfo } from "../src/shared/ha
 
 const nonce = "a".repeat(64);
 const readyValue = Object.freeze({
-  port: 33299,
+  port: 11663,
   pid: 1234,
   nonce,
-  productVersion: "0.1.0",
+  productVersion: "22.6.1",
   apiVersion: "1.0",
   snapshotSchemaVersion: "1.0",
 });

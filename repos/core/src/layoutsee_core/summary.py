@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 import re
 
-ALGORITHM_VERSION = "1.0"
-TARGET_BUDGET = 1000
+ALGORITHM_VERSION = "1.1"
+DEFAULT_MAX_TOKENS = 1200
 
 
 def _role(node: dict[str, object]) -> str:
@@ -41,94 +41,107 @@ def _estimate_tokens(text: str) -> int:
     return cjk + word_tokens + punctuation
 
 
-def summarize(record: dict[str, object], snapshot_id: str) -> dict[str, object]:
-    """确定性语义摘要：同一快照与参数字节级一致；可交互元素不因低分被裁剪。"""
+def _is_interactive(node: dict[str, object]) -> bool:
+    return bool(node["visible"]) and (
+        node["clickable"]
+        or node["scrollable"]
+        or "EditText" in node["className"]
+        or node["raw"].get("checkable") == "true"
+    )
+
+
+def _format_line(node: dict[str, object], ref: str) -> str:
+    bounds = node["boundsNormalized"]
+    flags = []
+    if not node["enabled"]:
+        flags.append("disabled")
+    if node["raw"].get("checked") == "true":
+        flags.append("checked")
+    if node["raw"].get("selected") == "true":
+        flags.append("selected")
+    position = f"({bounds['left']:.2f},{bounds['top']:.2f},{bounds['right']:.2f},{bounds['bottom']:.2f})"
+    suffix = f" [{', '.join(flags)}]" if flags else ""
+    return f"[{ref}] {_role(node)} {_label(node)} {position}{suffix}".strip()
+
+
+def summarize(record: dict[str, object], snapshot_id: str, *, max_tokens: int | None = DEFAULT_MAX_TOKENS) -> dict[str, object]:
+    """确定性语义摘要：可交互元素无条件保留，仅语义文本节点受预算裁剪。
+
+    同一快照与同一 max_tokens 的输出字节级一致；生成异常时降级为最简可交互清单。
+    """
+    try:
+        budget = int(max_tokens)
+    except (TypeError, ValueError):
+        budget = DEFAULT_MAX_TOKENS
+    if budget <= 0:
+        budget = DEFAULT_MAX_TOKENS
+    try:
+        return _summarize(record, snapshot_id, budget)
+    except Exception:
+        return _degrade(record, snapshot_id, budget)
+
+
+def _summarize(record: dict[str, object], snapshot_id: str, budget: int) -> dict[str, object]:
     nodes = record["snapshot"]["nodes"]
     refs = record["refs"]
     by_key = {node["nodeKey"]: node for node in nodes}
 
-    interactive_keys: list[str] = []
-    semantic_keys: list[str] = []
-    for node in nodes:
-        key = node["nodeKey"]
-        if node["visible"] and (node["clickable"] or node["scrollable"] or "EditText" in node["className"] or node["raw"].get("checkable") == "true"):
-            interactive_keys.append(key)
-        label = _label(node)
-        if node["visible"] and label and key not in interactive_keys:
-            semantic_keys.append(key)
+    interactive_keys = [node["nodeKey"] for node in nodes if _is_interactive(node)]
+    interactive_set = set(interactive_keys)
+    semantic_keys = [
+        node["nodeKey"]
+        for node in nodes
+        if node["nodeKey"] not in interactive_set and node["visible"] and _label(node)
+    ]
 
-    kept: set[str] = set(interactive_keys)
-    for key in interactive_keys + semantic_keys:
-        parent = by_key[key].get("parentKey")
-        while parent:
-            if parent in kept:
-                break
-            kept.add(parent)
-            parent = by_key[parent].get("parentKey")
-
-    ordered = [node for node in nodes if node["nodeKey"] in kept]
     lines: list[str] = []
     total_tokens = 0
-    total_interactive = len(interactive_keys)
-    included_interactive = 0
     included_text = 0
-    omitted_interactive = 0
     omitted_text = 0
 
-    budget_exhausted = False
-    # 先输出可交互节点，再输出语义节点；超预算时裁剪后者并标记 partial。
-    for phase, source_keys in ((1, interactive_keys), (2, semantic_keys)):
-        for key in source_keys:
-            if budget_exhausted:
-                if phase == 1:
-                    omitted_interactive += 1
-                else:
-                    omitted_text += 1
-                continue
-            node = by_key[key]
-            ref = refs[key]
-            bounds = node["boundsNormalized"]
-            flags = []
-            if not node["enabled"]:
-                flags.append("disabled")
-            if node["raw"].get("checked") == "true":
-                flags.append("checked")
-            if node["raw"].get("selected") == "true":
-                flags.append("selected")
-            role = _role(node)
-            label = _label(node)
-            position = f"({bounds['left']:.2f},{bounds['top']:.2f},{bounds['right']:.2f},{bounds['bottom']:.2f})"
-            suffix = f" [{', '.join(flags)}]" if flags else ""
-            line = f"[{ref}] {role} {label} {position}{suffix}".strip()
-            tokens = _estimate_tokens(line)
-            if total_tokens + tokens > TARGET_BUDGET and lines:
-                budget_exhausted = True
-                if phase == 1:
-                    omitted_interactive += 1
-                else:
-                    omitted_text += 1
-                continue
-            lines.append(line)
-            total_tokens += tokens
-            if phase == 1:
-                included_interactive += 1
-            else:
-                included_text += 1
+    # 可交互节点无条件保留，不参与预算裁剪（PRD 底线：可交互元素必保留）
+    for key in interactive_keys:
+        line = _format_line(by_key[key], refs[key])
+        total_tokens += _estimate_tokens(line)
+        lines.append(line)
+    interactive_tokens = total_tokens
 
-    partial = budget_exhausted or omitted_interactive > 0
+    # 语义文本节点在剩余预算内纳入，超出即裁剪并标记 partial
+    for key in semantic_keys:
+        line = _format_line(by_key[key], refs[key])
+        tokens = _estimate_tokens(line)
+        if total_tokens + tokens > budget:
+            omitted_text += 1
+            continue
+        lines.append(line)
+        total_tokens += tokens
+        included_text += 1
+
     text = "\n".join(lines)
+    raw_chars = len(str(record.get("xml", "") or ""))
+    summary_chars = len(text)
     return {
         "snapshotId": snapshot_id,
         "text": text,
         "estimatedTokens": total_tokens,
-        "partial": partial,
+        "maxTokens": budget,
+        "partial": omitted_text > 0,
+        "degraded": False,
+        "interactiveOverBudget": interactive_tokens > budget,
+        "compressionRatio": {
+            "rawChars": raw_chars,
+            "summaryChars": summary_chars,
+            "ratio": round(summary_chars / raw_chars, 4) if raw_chars else None,
+        },
         "coverage": {
-            "totalInteractive": total_interactive,
-            "includedInteractive": included_interactive,
-            "omittedInteractive": omitted_interactive,
+            "totalInteractive": len(interactive_keys),
+            "includedInteractive": len(interactive_keys),
+            "omittedInteractive": 0,
             "totalSemanticText": len(semantic_keys),
             "includedSemanticText": included_text,
             "omittedSemanticText": omitted_text,
         },
         "algorithmVersion": ALGORITHM_VERSION,
     }
+
+# __APPEND__

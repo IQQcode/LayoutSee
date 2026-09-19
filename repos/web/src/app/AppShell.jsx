@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { DeviceMobile, GearSix, GridFour, Wrench } from "@phosphor-icons/react";
+import { Wrench } from "@phosphor-icons/react";
+import { MorphGlyph, glyphs } from "../components/MorphIcons.jsx";
 import { HostBridge, KERNEL_STATE_TEXT } from "./HostBridge.js";
 import { Banner, IconButton } from "../components/ui.jsx";
 
 const NAV_ITEMS = [
-  { id: "devices", label: "设备", path: "/devices", icon: DeviceMobile },
-  { id: "group", label: "群控", path: "/group", icon: GridFour },
-  { id: "settings", label: "设置", path: "/settings", icon: GearSix },
+  { id: "devices", label: "设备", path: "/devices", icon: glyphs.navDevices, iconActive: glyphs.navDevicesActive },
+  { id: "group", label: "群控", path: "/group", icon: glyphs.navGroup, iconActive: glyphs.navGroupActive },
+  { id: "settings", label: "设置", path: "/settings", icon: glyphs.navSettings, iconActive: glyphs.navSettingsActive },
 ];
 
 function KernelBanner() {
@@ -67,16 +68,20 @@ export function AppShell() {
         <div className="brand-lockup">
           <img className="brand-mark" src="/layoutsee-icon-192.png" alt="" aria-hidden="true" />
           <span>LayoutSee</span>
-          <span className="version-chip">V0.1</span>
+          <span className="version-chip">V22.6.1</span>
         </div>
         <div className="top-actions">
           <IconButton
-            icon={GearSix}
             label="打开设置"
             tooltip="设置"
             active={window.location.pathname.startsWith("/settings")}
             onClick={() => navigate("/settings")}
-          />
+          >
+            <MorphGlyph
+              icon={window.location.pathname.startsWith("/settings") ? glyphs.navSettingsActive : glyphs.navSettingsGhost}
+              size={18}
+            />
+          </IconButton>
         </div>
       </header>
     ),
@@ -89,10 +94,14 @@ export function AppShell() {
       <div className="app-body">
         <aside className="sidebar">
           <nav aria-label="主导航">
-            {NAV_ITEMS.map(({ id, label, path, icon: Icon }) => (
+            {NAV_ITEMS.map(({ id, label, path, icon, iconActive }) => (
               <NavLink key={id} to={path} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
-                <span className="nav-icon"><Icon size={19} aria-hidden="true" /></span>
-                <span>{label}</span>
+                {({ isActive }) => (
+                  <>
+                    <span className="nav-icon"><MorphGlyph icon={isActive ? iconActive : icon} size={19} /></span>
+                    <span>{label}</span>
+                  </>
+                )}
               </NavLink>
             ))}
           </nav>

@@ -6,7 +6,7 @@ servers:
   - url: http://127.0.0.1:{port}
     variables:
       port:
-        default: "33299"
+        default: "11663"
 paths:
   /health/live:
     get:
@@ -220,7 +220,12 @@ paths:
   /api/v1/snapshots/{snapshotId}/summary:
     post:
       operationId: summarizeLayoutSnapshot
+      description: |
+        生成确定性语义摘要。可交互元素无条件保留，仅语义文本受预算裁剪；
+        响应含 maxTokens、compressionRatio、degraded、interactiveOverBudget 与 coverage。
+        请求体可选 maxTokens（正整数，缺省 1200，对齐低 token 目标）。
       parameters: [{ $ref: "#/components/parameters/SnapshotId" }]
+      requestBody: { $ref: "#/components/requestBodies/JsonBody" }
       responses:
         "200": { $ref: "#/components/responses/JsonEnvelope" }
   /api/v1/snapshots/{snapshotId}/diagnostics:

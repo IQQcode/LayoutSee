@@ -29,7 +29,7 @@ def parse_version(value: object) -> tuple[int, int, int] | None:
 
 
 def satisfies(version: str, spec: object) -> bool:
-    """极简 semver range：空格分隔的比较子句，全部满足才通过（例如 ">=0.1.0 <0.3.0"）。"""
+    """极简 semver range：空格分隔的比较子句，全部满足才通过（例如 ">=22.6.1 <23.0.0"）。"""
     current = parse_version(version)
     if current is None:
         return False

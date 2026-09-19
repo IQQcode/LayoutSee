@@ -77,7 +77,7 @@ class FakeCoreTest(unittest.TestCase):
         response, _ = self.request("/health/ready")
         self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
         self.assertIn("default-src 'self'", response.headers["Content-Security-Policy"])
-        self.assertEqual(self.ready.port >= 33299, True)
+        self.assertEqual(self.ready.port >= 11663, True)
 
     def test_scenario_uses_generated_model_and_control_socket(self) -> None:
         fixture = json.loads(SCENARIO.read_text())["value"]

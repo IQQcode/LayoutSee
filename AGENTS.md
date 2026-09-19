@@ -9,7 +9,7 @@
 1. 读 `docs/index.md`，定位本次需求涉及的产品、设计、调研文档。
 2. 要改代码时，先读根目录 `INDEX.md`（代码模块索引：各文件职责、跨工程速查、已知坑）。
 3. 涉及具体仓库时，读 `source/index.md` 定位工程，再读对应 `source/<repo>/overview.md` 了解仓库定位，`setup.md` 了解构建与启动，`test.md` 了解测试方式。
-4. 涉及 Android 布局感知时，加载 `skills/layout-inspector`。
+4. 涉及 Android 布局感知时，加载 `skills/layout-see`。
 5. 不确定 Agent 在该仓库的行为约束时，读对应仓库内的 `AGENTS.md`（如 `source/layoutsee-prototype/AGENTS.md`）。
 
 ## 2. 目录速览

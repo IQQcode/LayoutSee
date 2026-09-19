@@ -6,7 +6,7 @@ LayoutSee macOS 桌面壳（Shell）目标工程，采用 Electron 技术栈。
 
 壳负责桌面应用的窗口、进程守护、发行与系统集成，业务 UI 由 `repos/web` 的构建产物承载（WebView 渲染）。
 
-- 内核（Core）守护：拉起 / 守护 Python 内核服务（复用 uiautodev 设备接入层二开，默认 127.0.0.1:33299）。
+- 内核（Core）守护：拉起 / 守护 Python 内核服务（复用 uiautodev 设备接入层二开，默认 127.0.0.1:11663）。
 - 窗口管理：主窗口加载 `repos/web` 构建产物，支持多设备群控窗口。
 - 发行集成：打包（dmg）、自动更新、菜单栏、系统集成（遵循 DESIGN.md 的 Apple 品质感要求）。
 

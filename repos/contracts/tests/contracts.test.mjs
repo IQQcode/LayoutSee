@@ -81,9 +81,9 @@ test("插件清单锁定激活时机与能力白名单", async () => {
   }
 });
 
-test("兼容矩阵精确接受 0.1.0 契约组合", async () => {
+test("兼容矩阵精确接受 22.6.1 契约组合", async () => {
   const matrix = JSON.parse(await readFile(resolve(packageRoot, "compatibility/versions.json"), "utf8"));
-  assert.equal(matrix.productVersion, "0.1.0");
+  assert.equal(matrix.productVersion, "22.6.1");
   assert.deepEqual(matrix.accepted, [{ apiVersion: "1.0", snapshotSchemaVersion: "1.0" }]);
 });
 

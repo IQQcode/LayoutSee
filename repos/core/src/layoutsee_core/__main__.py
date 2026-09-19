@@ -8,14 +8,14 @@ import threading
 from pathlib import Path
 
 from .bootstrap import build_core
-from .server import ready_line
+from .server import DEFAULT_PORT_START, ready_line
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LayoutSee Core")
     parser.add_argument("--nonce")
     parser.add_argument("--static-dir", type=Path)
-    parser.add_argument("--port-start", type=int, default=33299)
+    parser.add_argument("--port-start", type=int, default=DEFAULT_PORT_START)
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--open", action="store_true", help="启动后自动用默认浏览器打开首页（需要 --static-dir）")
     args = parser.parse_args()

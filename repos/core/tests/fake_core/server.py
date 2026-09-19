@@ -62,7 +62,7 @@ def main() -> None:
     parser.add_argument("--control-socket", required=True)
     parser.add_argument("--control-token", required=True)
     parser.add_argument("--static-dir", type=Path)
-    parser.add_argument("--port-start", type=int, default=33299)
+    parser.add_argument("--port-start", type=int, default=11663)
     args = parser.parse_args()
 
     fixture = json.loads(args.scenario.read_text())

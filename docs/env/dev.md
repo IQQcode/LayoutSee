@@ -35,7 +35,7 @@ python3 -m uiautodev  # 默认 HTTP 端口 20242
 ## 已知坑位（Agent 容易犯的错）
 
 - **不要**尝试在本地完整启动 MySQL / Redis 做端到端测试，本产品无服务端依赖。
-- 多模块本地 Debug 时注意端口冲突：uiautodev 默认 20242，前端 Vite 默认 5173，内核 Core 规划默认 127.0.0.1:33299。
+- 多模块本地 Debug 时注意端口冲突：uiautodev 默认 20242，前端 Vite 默认 5173，内核 Core 默认 127.0.0.1:11663（历史上曾用 33299，与 uiautodev 撞号，故迁走）。
 - uiautodev 为第三方开源内核，禁止直接在其仓库内改动代码，二开产物应落在 layoutsee-prototype 或独立二开目录。
 
 ## 路由

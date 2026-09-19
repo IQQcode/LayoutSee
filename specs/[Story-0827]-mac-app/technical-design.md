@@ -41,7 +41,7 @@
 | Core 坐标 | 新建第一方 `repos/core`；不从 `source/uiautodev` 运行或相对导入 |
 | 契约坐标 | 新建 `repos/contracts`，OpenAPI 与 JSON Schema 是类型和样例的唯一来源 |
 | 本地存储 | V0.1 使用原子 JSON、JSONL 和会话临时文件，不引入数据库 |
-| 端口 | Core 自己原子绑定 `127.0.0.1`，从 33299 起最多尝试 10 个端口 |
+| 端口 | Core 自己原子绑定 `127.0.0.1`，从 11663 起最多尝试 10 个端口 |
 | 身份校验 | 壳生成 256 位启动随机数；Core 在 `READY` 和 `/api/v1/info` 原样回显 |
 | 快照事实源 | `LayoutSnapshot` 同时承载层级、截图、上下文与同步质量；摘要、诊断和 `ref` 均基于它 |
 | 写操作 | UI、MCP、插件全部进入同一设备串行队列、只读门禁和 ActionLog |
@@ -293,7 +293,7 @@ stateDiagram-v2
 实现细节：
 
 - 壳用加密安全随机源生成 32 字节随机数，仅通过子进程环境变量传递，不写日志和持久化。
-- Core 原子绑定端口后输出一行 UTF-8 JSON：`READY {"port":33299,"pid":123,"nonce":"...","productVersion":"0.1.0","apiVersion":"1.0","snapshotSchemaVersion":"1.0"}`。
+- Core 原子绑定端口后输出一行 UTF-8 JSON：`READY {"port":11663,"pid":123,"nonce":"...","productVersion":"0.1.0","apiVersion":"1.0","snapshotSchemaVersion":"1.0"}`。
 - READY 解析器限制单行 8KiB、只接受一次、字段严格校验；额外标准输出只作为脱敏日志。
 - 壳随后请求 `/api/v1/info`，要求端口、pid、随机数和三个版本字段完全一致，才允许导航。
 - 健康检查每 2 秒执行一次，连续两次失败才进入 `unhealthy`；Core 稳定 60 秒后重置重启预算。

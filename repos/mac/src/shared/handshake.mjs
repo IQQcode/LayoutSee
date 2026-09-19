@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-const VERSION = Object.freeze({ productVersion: "0.1.0", apiVersion: "1.0", snapshotSchemaVersion: "1.0" });
+const VERSION = Object.freeze({ productVersion: "22.6.1", apiVersion: "1.0", snapshotSchemaVersion: "1.0" });
 
 export const SESSION_TOKEN_CONTEXT = "layoutsee-ui-v1";
 

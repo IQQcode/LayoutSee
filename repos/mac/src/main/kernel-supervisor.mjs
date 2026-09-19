@@ -16,7 +16,7 @@ const DEFAULTS = Object.freeze({
   healthIntervalMs: 2_000,
   healthFailureThreshold: 2,
   stableResetMs: 60_000,
-  portStart: 33299,
+  portStart: 11663,
   portAttempts: 11,
   restartBackoffMs: Object.freeze([1_000, 2_000, 4_000]),
 });

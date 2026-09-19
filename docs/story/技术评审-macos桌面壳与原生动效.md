@@ -218,7 +218,7 @@ stateDiagram-v2
 实现约束：
 
 1. `app.requestSingleInstanceLock()` 保证单实例，第二实例只唤醒现有窗口；
-2. 端口唯一所有者是内核。内核从 33299 起原子 bind，冲突时最多递增 10 次；禁止壳先探测再 spawn；
+2. 端口唯一所有者是内核。内核从 11663 起原子 bind（2026-09-18 由 33299 迁出，避免与 uiautodev 撞号），冲突时最多递增 10 次；禁止壳先探测再 spawn；
 3. 内核在受控标准输出发出 `READY {port,pid,nonce,productVersion,apiVersion,snapshotSchemaVersion}`；壳再调用 `/api/v1/info` 校验同一 nonce，避免误连其他本地服务；
 4. 健康检查周期 2s，连续两次失败进入 `unhealthy`；重启退避 1/2/4s，稳定运行 60s 后重置预算；
 5. sidecar 必须单独建进程组；退出时先停止新请求与 WS，再向整个进程组发送 SIGTERM，3s 后仍未退出才强杀，scrcpy 等子孙进程一并回收；

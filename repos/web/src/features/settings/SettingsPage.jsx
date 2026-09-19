@@ -200,7 +200,7 @@ export function SettingsPage({ onThemeChange }) {
                 <span>快照 Schema</span><code>{coreInfo?.snapshotSchemaVersion ?? "—"}</code>
                 <span>兼容状态</span>
                 <span className="compat-badge">
-                  {coreInfo && coreInfo.productVersion === "0.1.0" && coreInfo.apiVersion === "1.0" && coreInfo.snapshotSchemaVersion === "1.0"
+                  {coreInfo && coreInfo.productVersion === "22.6.1" && coreInfo.apiVersion === "1.0" && coreInfo.snapshotSchemaVersion === "1.0"
                     ? <><StatusPill tone="success" dot>版本兼容</StatusPill></>
                     : <><StatusPill tone="danger" dot>版本不兼容</StatusPill></>}
                 </span>

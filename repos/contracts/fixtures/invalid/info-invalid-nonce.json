@@ -2,10 +2,10 @@
   "$schemaRef": "common/info.json",
   "$expectedError": "VERSION_INCOMPATIBLE",
   "value": {
-    "port": 33299,
+    "port": 11663,
     "pid": 12345,
     "nonce": "too-short",
-    "productVersion": "0.1.0",
+    "productVersion": "22.6.1",
     "apiVersion": "1.0",
     "snapshotSchemaVersion": "1.0"
   }

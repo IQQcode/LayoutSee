@@ -1,5 +1,5 @@
 // 此文件由 contracts:generate 自动生成，禁止手改。
-// schema sha256: ffa3cb3503da450dccc8889d442b5d03aca26a7e9e696cbb5d94bfe9b976f2d4
+// schema sha256: 8be3449bda9e4531d63d8592b214f2f82613123444b9663b1b15950b4f15ed51
 
 export interface ApiError {
   "code": "DEVICE_NOT_FOUND" | "DEVICE_DISCONNECTED" | "DEVICE_OFFLINE" | "DEVICE_UNAUTHORIZED" | "ADB_NOT_FOUND" | "SNAPSHOT_IN_PROGRESS" | "SNAPSHOT_STALE" | "REF_NOT_FOUND" | "AMBIGUOUS_ELEMENT" | "INVALID_XPATH" | "READ_ONLY_MODE" | "DEVICE_BUSY" | "INVALID_ARGUMENT" | "MEDIA_UNAVAILABLE" | "PLUGIN_INVALID" | "PLUGIN_NOT_FOUND" | "PLUGIN_INCOMPATIBLE" | "PLUGIN_PERMISSION_DENIED" | "PLUGIN_RATE_LIMITED" | "HOST_CAPABILITY_UNAVAILABLE" | "PERMISSION_REQUIRED" | "VERSION_INCOMPATIBLE" | "CORE_UNAVAILABLE" | "OPERATION_TIMEOUT";
@@ -14,7 +14,7 @@ export interface CoreInfo {
   "port": number;
   "pid": number;
   "nonce": string;
-  "productVersion": "0.1.0";
+  "productVersion": "22.6.1";
   "apiVersion": "1.0";
   "snapshotSchemaVersion": "1.0";
 }

@@ -2,13 +2,13 @@
 
 快速定位各工程模块。行数后的说明为模块当前职责；改代码前先看本索引与对应 `source/<repo>/{overview,setup,test}.md`。
 
-最后更新：2026-09-04。行数会漂移，职责说明以代码为准。
+最后更新：2026-09-18。行数会漂移，职责说明以代码为准。
 
 模块一览：`repos/core`（Python Core）、`repos/web`（React 前端）、`repos/mac`（Electron 壳）、`repos/contracts`（契约事实源）、`repos/plugins`（随包插件包）。
 
 ## repos/core — Python 本地 Core（HTTP 服务 + 设备驱动 + 算法）
 
-启动方式：`uv run --project repos/core python -m layoutsee_core --nonce <64hex> [--static-dir <web dist>] [--data-dir <dir>] [--port-start 33299]`。端口从 33299 起最多尝试 10 个，绑定后输出一行 READY JSON。
+启动方式：`uv run --project repos/core python -m layoutsee_core --nonce <64hex> [--static-dir <web dist>] [--data-dir <dir>] [--port-start 11663]`。端口从 `DEFAULT_PORT_START`（`server.py`，当前 11663）起最多尝试 10 个，绑定后输出一行 READY JSON。
 
 浏览器宿主：Core 托管 `index.html` 时把本次会话令牌替换进 `<meta name="layoutsee-session">`（占位符 `__LAYOUTSEE_SESSION__`），因此浏览器直接打开 READY 行里的 URL 即可用全部写能力。`/api/**` 与 `/mcp/**` 一律校验 Host（必须回环 + 本端口）与 Origin（存在时必须同源，缺失放行），拦 DNS rebinding 与同机跨源写。
 
@@ -67,12 +67,13 @@
 | `api/client.js` | fetch 封装 + api 对象（全部端点） | 令牌注入 `X-LayoutSee-Session`；**网络层日志**：非 2xx 记 `[LayoutSee][网络]`，`/api/v1/ui-logs` 豁免防递归 |
 | `api/logger.js` | 统一 Tag 日志 `[LayoutSee][Tab名]` | `uiLog/uiLogApi/LogTags`；1.5s 批量上报；上报通道由 LoggingBridge 注入（避免循环依赖） |
 | `media/scrcpyStream.js` | ScrcpyViewer：拉流 → 解析 → WebCodecs 解码 → canvas | **avcC description 长度必须精确**（多 1 字节 Chromium 零输出且无报错）；丢帧后等关键帧；解码器错误自愈；pts 取低 48 位 |
-| `app/AppShell.jsx` | 侧边导航 + 标题栏 + KernelBanner | |
+| `app/AppShell.jsx` | 侧边导航 + 标题栏 + KernelBanner | 左侧导航与标题栏齿轮用 `MorphGlyph`，激活态 morph（设备→充电、群控→宫格勾、设置→设置2） |
 | `app/HostBridge.js` | 宿主抽象：`kind`（shell / browser）+ `can` 能力清单 + 会话初始化 | 壳走 IPC 会话，浏览器读 `<meta name="layoutsee-session">`（dev 下回落 `VITE_LAYOUTSEE_SESSION`）；UI 按 `can` 渲染，禁止 `isElectron` 式嗅探；两者都没有令牌时进入只读观察模式并出横幅 |
 | `app/LoggingBridge.js` / `theme.js` / `GlobalErrorBoundary.jsx` | 日志接线 / 主题（data-theme + 原生同步）/ 错误边界 | |
-| `components/ui.jsx` | Button/IconButton/Banner/Dialog/Toast(useToast)/CopyButton/EmptyState/Spinner | toast 2.4s 自动消失 |
+| `components/MorphIcons.jsx` | **左侧图标系统**：morphicons（MIT）+ Lucide 图标数据，`glyphs` 集中导出 | 换 prop 即弹簧变形，无需 from/to 或 key；`MorphGlyph` 统一 19px / 线宽 2 / `reducedMotion="user"`（跟随系统减弱动效）；**新增图标只改这个文件**；图标必须是描边中心线集（Lucide/Tabler/Heroicons outline），Phosphor 填充型不可用 |
+| `components/ui.jsx` | Button/IconButton/Banner/Dialog/Toast(useToast)/CopyButton/EmptyState/Spinner | toast 2.4s 自动消失；`Button.icon` 与 `IconButton.icon` 都**自动区分**「图标组件」与「Lucide 图标数据（数组）」——传数据给期望组件的 prop 会抛 React #130 白屏，已踩过两次 |
 | `components/ResizeHandle.jsx` | 可访问分隔条（方向键/Shift/Home/End/双击复位） | |
-| `features/workbench/WorkbenchPage.jsx` | 工作台编排：设备轮询、抓取、只读、viewMode 状态机、控制轨、底部状态栏 | **TAB_IDS 顺序**（常用-元素查看-MCP-插件-布局智能；终端已收拢进插件页，`/workbench/terminal` 路由保留并复用 `.plugin-detail` 二级页外壳）；`selectNode` 是替换式红色高亮唯一入口（XPath/诊断高亮保留）；设备区宽度自适应 + 手动拖动后记忆；状态栏的分辨率取 `window-size`、Core 版本取 `/api/v1/info`，各取一次 |
+| `features/workbench/WorkbenchPage.jsx` | 工作台编排：设备轮询、抓取、只读、viewMode 状态机、控制轨、底部状态栏 | **TAB_IDS 顺序**（常用-元素查看-MCP-插件-布局智能；终端已收拢进插件页，`/workbench/terminal` 路由保留并复用 `.plugin-detail` 二级页外壳）；`selectNode` 是替换式红色高亮唯一入口（XPath/诊断高亮保留）；设备区宽度自适应 + 手动拖动后记忆；状态栏的分辨率取 `window-size`、Core 版本取 `/api/v1/info`，各取一次；**控制轨图标全走 `glyphs` + `MorphGlyph`**：冻结/只读/审查为状态 morph，音量/旋转/抓取为 `pulseIcon` 一次性 morph，Tab 图标按选中态 morph，抓取三态=相机→旋转加载→对勾（`capturing` / `captureDone`） |
 | `features/workbench/DeviceCanvas.jsx` | 设备画面：live（scrcpy）/ snapshot（布局查看）/ 截图降级三态 | **点击坐标按设备物理分辨率换算**（`window-size` 端点），不是推流分辨率；布局查看=点选命中不注入 tap；live 模式零边框满幅；`onPointerInfo` 以 60ms 节流上报坐标给状态栏 |
 | `features/workbench/tabs/ElementTab.jsx` | 元素查看：属性面板 + 层级树 + XPath + 选择器 + 导出 | 树渲染递归 **必须传 nodeKey 数组**（传对象数组=树空 bug 根源）；快照加载默认全展开；属性行 resource-id 置顶；Minimal Light/Dark 语法高亮（`--code-*` 变量）；`XPath by [id\|text\|class\|自定义]` 按 Core 返回的 `kind` 回填；多命中渲染序号 chip（>200 折叠为跳转输入框） |
 | `tabs/CommonTab.jsx` | 当前应用/启停 + 包管理（搜索、系统应用开关、启动、停止、清除数据、卸载） | 启动表单预填前台应用（用户已输入不覆盖）；高危动作走统一二次确认弹窗；只读模式下写操作全禁 |
@@ -81,7 +82,8 @@
 | `features/plugins/registry.js` / `bridgeHost.js` / `PluginSlot.jsx` | 插件入口模型 / 桥宿主端 / iframe 生命周期 | Core 索引不做 host/devicePlatform 过滤，过滤在 `buildExtensionModel`；桥来源校验是 `event.source === frame.contentWindow && event.origin === "null"`（sandbox 无 allow-same-origin）；宿主**不下发**会话令牌；方法白名单 + 清单声明 + 用户授权 + 限流四层；主题/只读/切设备靠 `context.changed` 事件下发 |
 | `public/plugin-runtime.js` | 插件侧 SDK `$u`（随宿主发布，不进插件包） | `$u.device.logcat/logcatClear`、`$u.snapshot.*`、`$u.host.can/saveFile/copyText`、`$u.storage`、`$u.ui`；只接受 `event.source === window.parent` 的回包 |
 | `public/favicon.ico` / `favicon-*.png` / `apple-touch-icon-180x180.png` / `layoutsee-icon-192.png` | 站点图标与品牌 logo | 引用点：`index.html`（favicon 链接）、`AppShell.jsx` / `WorkbenchPage.jsx` 的 `.brand-mark`；切图源头在 `docs/designs/logo/exports/` |
-| `features/devices/DevicesPage.jsx` | 设备表格 | 操作列 sticky right 12px 同宽 150px 中心对齐 |
+| `features/devices/DevicesPage.jsx` | 设备表格 + 平台 Tab（Android / iOS / HarmonyOS） | 操作列 sticky right 12px 同宽 150px 中心对齐；**行底色必须用不透明的 `--ls-color-row-bg(-hover)`**，粘性列 `background-color: inherit`——父子各画一层半透明 hover 会叠出灰条 |
+| `features/devices/PlatformPlaceholder.jsx` | iOS / HarmonyOS 未开放平台占位面板 | 逐词模糊入场（BlurText 风格，`step` 控制错峰：标题 90ms、长段落 26ms）+ `background-clip: text` 光泽扫过（ShinyText 风格）；参考 reactbits 但**纯 CSS 实现，不引 motion**；reduced-motion 下降级静态 |
 | `features/settings/SettingsPage.jsx` | 设置页 | `save(patch)` **只发补丁**，不回传整个对象 |
 | `features/group-preview/GroupPreviewPage.jsx` | 群控预览（截图轮询，未接 scrcpy） | |
 
@@ -166,3 +168,4 @@
 7. 首页注入令牌后必须按替换后的字节长度写 `Content-Length`，否则浏览器截断首页
 8. 插件 iframe 的 CSP 不能写 `'self'`：`sandbox="allow-scripts"`（无 `allow-same-origin`）下文档 origin 是 opaque，`'self'` 序列化成 `null` 匹配不到任何来源，脚本会被自己的策略拦掉——必须写显式回环 origin，且主文档与插件两套策略互斥下发（`_csp_override` 每请求重置，勿叠加）
 9. 插件页不能内联 `<script>`、`connect-src 'none'` 不能自行发请求；插件拿不到宿主 `data-theme`，主题只能靠 `context.changed` 桥事件同步
+10. 产品版本号必须是 **3 段 semver**（当前 `22.6.1`）：electron-builder 用 `semver.valid(version, loose)` 校验 package.json，4 段（如 `22.6.1.0`）直接抛 `Invalid version` 导致 DMG 打不出来；macOS 的 `CFBundleShortVersionString` 同样只允许 1–3 段。改产品版本时这些点必须同步，漏一个就出不一致或功能降级：4 个 `package.json` + `package-lock.json`（含 `@layoutsee/contracts` 的依赖 pin，只改 package.json 会让 `npm ci` 失配）、`core/pyproject.toml`、`PRODUCT_VERSION` 与 `__version__`、契约 `schemas/common/info.json` 的 `const` 与 `compatibility/versions.json`（改完跑 `contracts:generate` 重生成，生成物禁止手改）、mac `handshake.mjs` 的 VERSION 金样（与 Core READY 行强校验，不一致壳直接拒绝启动）、web `SettingsPage` 里的兼容判定字面量，以及**内置插件 manifest 的 `engines.layoutsee`**——区间上界写死会在改版本后失配，插件被整体判为「版本不兼容」

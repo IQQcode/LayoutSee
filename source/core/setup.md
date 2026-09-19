@@ -7,7 +7,7 @@ uv sync --project repos/core
 uv run --project repos/core python -m layoutsee_core --nonce <64位小写十六进制随机数>
 ```
 
-默认从 `33299` 开始尝试 10 个 loopback 端口，成功后只向标准输出写一行 READY。常用参数：
+默认从 `11663` 开始尝试 10 个 loopback 端口（`--port-start` 可覆盖），成功后只向标准输出写一行 READY。常用参数：
 
 - `--static-dir <path>`：托管正式 Web 构建产物（打包时为 `resources/web`）。
 - `--data-dir <path>`：覆盖数据目录（默认 `~/Library/Application Support/LayoutSee`）。
