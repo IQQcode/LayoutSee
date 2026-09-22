@@ -147,7 +147,8 @@ export function DevicesPage() {
       {loading ? (
         <div className="table-card" style={{ padding: 24 }}><Spinner label="正在枚举设备" /></div>
       ) : devices.length === 0 ? (
-        <section className="table-card" style={{ padding: 20 }}>
+        // scanning：仅在 ADB 可用时开启声呐扫描（找不到 adb 时并没有在扫，不该装作在扫）
+        <section className={`table-card device-empty${adbMissing ? "" : " scanning"}`} style={{ padding: 20 }}>
           <EmptyState icon={AndroidLogo} title={adbMissing ? "未找到 ADB 工具链" : "还没有检测到设备"} description={adbMissing ? "请在设置中指定 adb 路径，或安装 Android platform-tools 后重新检测。" : "使用 USB 连接设备并开启开发者模式，LayoutSee 会自动发现可用设备。"}>
             <div className="setup-guide">
               <div className="guide-step">

@@ -169,6 +169,59 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .platform-tabs em { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--ls-color-bg-subtle); color: var(--ls-color-text-tertiary); }
 .platform-tabs button.active em { background: var(--ls-color-bg-selected); color: var(--ls-color-brand); }
 
+/* 设备空状态动效（参考 reactbits 雷达/Status pulse，纯 CSS 表达，不引 motion）：
+   声呐环 = LayoutSee 正在自动发现设备、当前尚未连接；指引步骤错峰入场 */
+/* 背景极光：两团柔光缓慢漂移（不用 filter: blur——大面积模糊动画会拖垮合成器，
+   径向渐变自带的软边即柔光效果；z-index: 0 自建层叠上下文，让负 z 伪元素夹在卡片底色与内容之间） */
+.device-empty { position: relative; z-index: 0; overflow: hidden; }
+.device-empty::before,
+.device-empty::after {
+  content: ""; position: absolute; z-index: -1; border-radius: 50%; pointer-events: none;
+}
+.device-empty::before {
+  width: 460px; height: 460px; left: 10%; top: -140px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--ls-color-brand) 9%, transparent), transparent);
+  animation: device-aurora-a 12s var(--ls-ease-default) infinite;
+}
+.device-empty::after {
+  width: 440px; height: 440px; right: 6%; bottom: -120px;
+  background: radial-gradient(closest-side, color-mix(in srgb, #64d2ff 8%, transparent), transparent);
+  animation: device-aurora-b 15s var(--ls-ease-default) infinite;
+}
+@keyframes device-aurora-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(64px, 26px) scale(1.16); }
+}
+@keyframes device-aurora-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-56px, -24px) scale(1.1); }
+}
+.device-empty .empty-state > * { animation: device-empty-in .55s var(--ls-ease-out) both; }
+.device-empty .empty-state > :nth-child(2) { animation-delay: .06s; }
+.device-empty .empty-state > :nth-child(3) { animation-delay: .12s; }
+.device-empty .setup-guide > * { animation: device-empty-in .55s var(--ls-ease-out) both; }
+.device-empty .setup-guide > :nth-child(1) { animation-delay: .2s; }
+.device-empty .setup-guide > :nth-child(2) { animation-delay: .28s; }
+.device-empty .setup-guide > :nth-child(3) { animation-delay: .36s; }
+.device-empty .setup-guide > :nth-child(4) { animation-delay: .44s; }
+.device-empty.scanning .empty-icon { position: relative; }
+.device-empty.scanning .empty-icon::before,
+.device-empty.scanning .empty-icon::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 17px;
+  border: 1.5px solid color-mix(in srgb, var(--ls-color-brand) 62%, transparent);
+  animation: device-sonar 3.2s var(--ls-ease-default) infinite;
+  pointer-events: none;
+}
+.device-empty.scanning .empty-icon::after { animation-delay: 1.6s; }
+@keyframes device-empty-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes device-sonar {
+  0% { opacity: .8; transform: scale(.92); }
+  70%, 100% { opacity: 0; transform: scale(1.7); }
+}
+
 /* ============ 未开放平台占位 ============ */
 .platform-placeholder {
   position: relative; display: flex; flex-direction: column; align-items: center;
@@ -258,6 +311,12 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
   .shiny-text { animation: none; }
   .blur-word { animation: none; opacity: 1; filter: none; transform: none; }
   .shiny-text { color: var(--ls-color-text-secondary); background: none; -webkit-background-clip: initial; background-clip: initial; }
+  .device-empty .empty-state > *,
+  .device-empty .setup-guide > *,
+  .device-empty::before,
+  .device-empty::after,
+  .device-empty.scanning .empty-icon::before,
+  .device-empty.scanning .empty-icon::after { animation: none; }
 }
 
 .table-card { border: 1px solid var(--ls-color-border-default); border-radius: 12px; background: var(--ls-color-bg-panel); overflow-x: auto; overflow-y: hidden; }
@@ -293,7 +352,7 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .hint-card p { margin: 0; font-size: 12.5px; }
 .hint-card .button { margin-left: auto; }
 
-.setup-guide { display: grid; gap: 10px; max-width: 520px; }
+.setup-guide { display: grid; gap: 10px; max-width: 520px; text-align: left; }
 .setup-guide .guide-step { display: flex; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--ls-color-border-default); background: var(--ls-color-bg-panel); }
 .guide-step .step-no { flex: 0 0 auto; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--ls-color-bg-selected); color: var(--ls-color-brand); font-weight: 700; font-size: 12px; }
 .guide-step b { display: block; margin-bottom: 2px; }

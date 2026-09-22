@@ -82,7 +82,7 @@
 | `features/plugins/registry.js` / `bridgeHost.js` / `PluginSlot.jsx` | 插件入口模型 / 桥宿主端 / iframe 生命周期 | Core 索引不做 host/devicePlatform 过滤，过滤在 `buildExtensionModel`；桥来源校验是 `event.source === frame.contentWindow && event.origin === "null"`（sandbox 无 allow-same-origin）；宿主**不下发**会话令牌；方法白名单 + 清单声明 + 用户授权 + 限流四层；主题/只读/切设备靠 `context.changed` 事件下发 |
 | `public/plugin-runtime.js` | 插件侧 SDK `$u`（随宿主发布，不进插件包） | `$u.device.logcat/logcatClear`、`$u.snapshot.*`、`$u.host.can/saveFile/copyText`、`$u.storage`、`$u.ui`；只接受 `event.source === window.parent` 的回包 |
 | `public/favicon.ico` / `favicon-*.png` / `apple-touch-icon-180x180.png` / `layoutsee-icon-192.png` | 站点图标与品牌 logo | 引用点：`index.html`（favicon 链接）、`AppShell.jsx` / `WorkbenchPage.jsx` 的 `.brand-mark`；切图源头在 `docs/designs/logo/exports/` |
-| `features/devices/DevicesPage.jsx` | 设备表格 + 平台 Tab（Android / iOS / HarmonyOS） | 操作列 sticky right 12px 同宽 150px 中心对齐；**行底色必须用不透明的 `--ls-color-row-bg(-hover)`**，粘性列 `background-color: inherit`——父子各画一层半透明 hover 会叠出灰条 |
+| `features/devices/DevicesPage.jsx` | 设备表格 + 平台 Tab（Android / iOS / HarmonyOS） | 操作列 sticky right 12px 同宽 150px 中心对齐；**行底色必须用不透明的 `--ls-color-row-bg(-hover)`**，粘性列 `background-color: inherit`——父子各画一层半透明 hover 会叠出灰条；空状态挂 `device-empty`（+`scanning`）类：背景极光柔光漂移（径向渐变实现，**勿改回 filter: blur——大面积模糊动画会拖垮合成器**）+ 声呐扫描环传达「尚未连接、自动发现中」+ 指引步骤错峰入场（`.setup-guide` 左对齐），ADB 缺失时去掉 `scanning` 不装作在扫 |
 | `features/devices/PlatformPlaceholder.jsx` | iOS / HarmonyOS 未开放平台占位面板 | 逐词模糊入场（BlurText 风格，`step` 控制错峰：标题 90ms、长段落 26ms）+ `background-clip: text` 光泽扫过（ShinyText 风格）；参考 reactbits 但**纯 CSS 实现，不引 motion**；reduced-motion 下降级静态 |
 | `features/settings/SettingsPage.jsx` | 设置页 | `save(patch)` **只发补丁**，不回传整个对象 |
 | `features/group-preview/GroupPreviewPage.jsx` | 群控预览（截图轮询，未接 scrcpy） | |
@@ -113,7 +113,7 @@
 | `main/logging.mjs` | 按天日志 `logs/YYYY-MM-DD-{shell,core}.log` | Core stderr 由此收集 |
 | `preload/index.cjs` | `contextBridge` 白名单暴露 | 新 IPC 必须同时加 main handler + 这里 + ShellBridge |
 | `shared/handshake.mjs` | 跨语言握手金样（版本矩阵 + 令牌推导） | Node 侧与 Python `server.derive_session_token` 必须一致 |
-| `bootstrap/index.html` | 内置启动/错误页（不依赖 Core） | |
+| `bootstrap/index.html` | 内置启动/错误页（不依赖 Core） | 启动等待用 ThinkingOrb 风点阵球（panelui ThinkingOrb 视觉的 canvas 重写：working=倾斜轨道粒子流、searching=点阵球+扫描经线，随 Core 状态切换；failed/stopped 隐藏、prefers-reduced-motion 静态帧）+ logo 呼吸；明暗色自适应。logo 以 data URI 内嵌，该页 CSP 只放行 `img-src data:` |
 
 ### scripts/
 
