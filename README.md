@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="./assets/readme/icon.png" width="72" alt="LayoutSee 图标：一条彩虹渐变的丝带折成 M 形">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/readme/logo-dark.png">
+    <img src="./assets/readme/logo-light.png" width="240" alt="LayoutSee：一条彩虹渐变的丝带折成 M 形，下方是 LayoutSee 字样">
+  </picture>
 </p>
 
 中文 · [English](README.en.md)

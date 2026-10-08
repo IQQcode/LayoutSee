@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="./assets/readme/icon.png" width="72" alt="The LayoutSee icon: a rainbow gradient ribbon folded into an M shape">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/readme/logo-dark.png">
+    <img src="./assets/readme/logo-light.png" width="240" alt="LayoutSee: a rainbow gradient ribbon folded into an M shape, with the LayoutSee wordmark below">
+  </picture>
 </p>
 
 [中文](README.md) · English
