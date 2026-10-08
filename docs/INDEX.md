@@ -12,6 +12,7 @@ LayoutSee Workspace 的知识入口。Agent 接需求后从这里路由到对应
 | 调研内容 | [RESEARCH.md](./RESEARCH.md) | [竞品架构调研](./research/uiauto-analysis/uiautodev-analysis.md)、[竞品功能清单](./research/uiauto-analysis/uiautodev-desktop-function.md)、[竞品运行验证](./research/uiauto-analysis/uiautodev-run-verification.md)、[ZCode 视觉基准](./research/design/zcode-client-design-spec.md) | 调研人 |
 | 需求实现拆解 | [STORY.md](./STORY.md) | [story/](./story/) 目录 | RD |
 | 环境配置与联调 | [env/](./env/) | [dev.md](./env/dev.md) | RD / 运维 |
+| 仓库结构与导航 | [repo-structure.md](./repo-structure.md) | 完整文件树、目录职责、工程命令、文档导航（原根 README） | 团队共同维护 |
 
 ## 给 Agent 的导航
 
@@ -20,6 +21,8 @@ LayoutSee Workspace 的知识入口。Agent 接需求后从这里路由到对应
 - 想知道「竞品调研结论」：`RESEARCH.md` → `research/uiauto-analysis/`
 - 想知道「某个需求怎么拆的」：`STORY.md` → `story/`
 - 想知道「本地环境怎么搭」：`env/dev.md` → 对应 `source/<repo>/setup.md`
+- 想知道「仓库结构 / 某个目录放什么」：`repo-structure.md`（完整文件树与目录职责）
+- 想知道「项目对外怎么介绍、用户怎么装」：根 `README.md`（中英双语，含界面截图）
 
 ## 沉淀约定
 
