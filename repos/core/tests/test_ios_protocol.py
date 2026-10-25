@@ -11,11 +11,11 @@ import socket
 import struct
 import threading
 import unittest
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from layoutsee_core.errors import CoreError
 from layoutsee_core.ios import archiver, client, driver, peertalk, usbmux
+from layoutsee_core.snapshots import normalize_nodes
 
 UDID = "00008101-000A2C3E1F29002E"
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lookin" / "response_attachment_hierarchy.plist"
@@ -475,25 +475,19 @@ class DriverTest(unittest.TestCase):
         warnings: list[str] = []
         xml = driver.build_xml({"displayItems": [make_window()]}, 3.0, groups_by_oid(), warnings)
         self.assertEqual(warnings, [])
-        root = ET.fromstring(xml)
-        self.assertEqual(root.tag, "hierarchy")
-        self.assertEqual(root.attrib.get("rotation"), "0")
-        window_node = root.find("node")
-        self.assertIsNotNone(window_node)
-        self.assertEqual(window_node.attrib["class"], "UIWindow")
-        self.assertEqual(window_node.attrib["index"], "0")
-        self.assertEqual(window_node.attrib["bounds"], "[0,0][1170,2532]")
-        label_node = window_node.find("node")
-        self.assertIsNotNone(label_node)
-        self.assertEqual(label_node.attrib["class"], "UILabel")
-        self.assertEqual(label_node.attrib["index"], "0")
-        self.assertEqual(label_node.attrib["bounds"], "[60,300][660,432]")
-        self.assertEqual(label_node.attrib["text"], "你好")
-        self.assertEqual(label_node.attrib["resource-id"], "titleLabel")
-        self.assertEqual(label_node.attrib["content-desc"], "标题")
-        self.assertEqual(label_node.attrib["enabled"], "true")
-        self.assertEqual(label_node.attrib["clickable"], "false")
-        self.assertEqual(label_node.attrib["scrollable"], "false")
+        self.assertIn('<hierarchy rotation="0">', xml)
+        # 直接走生产解析链路 normalize_nodes 断言，同时验证生成的 XML 可被快照管线消费
+        nodes, _, _ = normalize_nodes(xml, {"width": 1170, "height": 2532})
+        self.assertEqual([node["className"] for node in nodes], ["UIWindow", "UILabel"])
+        self.assertEqual(nodes[0]["boundsPx"], {"left": 0, "top": 0, "right": 1170, "bottom": 2532})
+        label = nodes[1]
+        self.assertEqual(label["boundsPx"], {"left": 60, "top": 300, "right": 660, "bottom": 432})
+        self.assertEqual(label["text"], "你好")
+        self.assertEqual(label["resourceId"], "titleLabel")
+        self.assertEqual(label["contentDescription"], "标题")
+        self.assertTrue(label["enabled"])
+        self.assertFalse(label["clickable"])
+        self.assertFalse(label["scrollable"])
 
     def test_build_xml_unparsable_frame_records_warning(self) -> None:
         item: dict[str, object] = {
@@ -503,9 +497,8 @@ class DriverTest(unittest.TestCase):
         }
         warnings: list[str] = []
         xml = driver.build_xml({"displayItems": [item]}, 1.0, {}, warnings)
-        node = ET.fromstring(xml).find("node")
-        self.assertIsNotNone(node)
-        self.assertEqual(node.attrib["bounds"], "[0,0][0,0]")
+        nodes, _, _ = normalize_nodes(xml, {"width": 100, "height": 100})
+        self.assertEqual(nodes[0]["boundsPx"], {"left": 0, "top": 0, "right": 0, "bottom": 0})
         self.assertEqual(len(warnings), 1)
         self.assertIn("frame", warnings[0])
 
@@ -548,10 +541,10 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(result["app"]["appName"], "LookinDemo")
         self.assertEqual(result["app"]["screenScale"], 3.0)
         self.assertEqual(result["app"]["port"], 47175)
-        label_node = ET.fromstring(result["xml"]).find("node/node")
-        self.assertIsNotNone(label_node)
-        self.assertEqual(label_node.attrib["text"], "你好")
-        self.assertEqual(label_node.attrib["resource-id"], "titleLabel")
+        nodes, _, _ = normalize_nodes(result["xml"], {"width": 1170, "height": 2532})
+        self.assertGreaterEqual(len(nodes), 2)
+        self.assertEqual(nodes[1]["text"], "你好")
+        self.assertEqual(nodes[1]["resourceId"], "titleLabel")
 
 
 if __name__ == "__main__":
