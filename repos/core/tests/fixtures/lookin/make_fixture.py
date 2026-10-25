@@ -54,18 +54,20 @@ def main() -> None:
         return dict_obj([("X", float(x)), ("Y", float(y)), ("Width", float(w)), ("Height", float(h))])
 
     # 业务对象图：窗口 → UILabel（带 text 属性组）
+    # 键形态按 2026-10-26 实弹校准：HierarchyInfo 数字键（1=displayItems 2=appInfo），
+    # section 内属性数组的键是 "attributes"，attr.identifier 是短码（lb_t_t=UILabel text）
     window_obj = add({"$class": cls_object, "oid": atom(1), "classChainList": array([atom("UIWindow"), atom("UIView")])})
     label_obj = add({"$class": cls_object, "oid": atom(2), "classChainList": array([atom("UILabel"), atom("UIView")])})
-    attr = add({"$class": cls_attr, "identifier": atom("text"), "attrType": atom(1), "value": atom("你好，世界"), "extraValue": NULL})
-    section = add({"$class": cls_section, "identifier": atom("Basic"), "attrs": array([attr])})
-    group = add({"$class": cls_group, "identifier": atom("Attributes"), "attrSections": array([section])})
+    attr = add({"$class": cls_attr, "identifier": atom("lb_t_t"), "attrType": atom(24), "value": atom("你好，世界"), "extraValue": NULL})
+    section = add({"$class": cls_section, "identifier": atom("lb_t"), "attributes": array([attr])})
+    group = add({"$class": cls_group, "identifier": atom("la"), "attrSections": array([section])})
     label = add({
         "$class": cls_item,
         "subitems": NULL,
         "frame": frame(20, 100, 200, 44),
         "bounds": NULL,
         "alpha": atom(1.0),
-        "isHidden": atom(False),
+        "hidden": atom(False),
         "viewObject": label_obj,
         "layerObject": NULL,
         "attributesGroupList": array([group]),
@@ -78,14 +80,14 @@ def main() -> None:
         "frame": frame(0, 0, 390, 844),
         "bounds": NULL,
         "alpha": atom(1.0),
-        "isHidden": atom(False),
+        "hidden": atom(False),
         "viewObject": window_obj,
         "layerObject": NULL,
         "attributesGroupList": NULL,
         "backgroundColor": NULL,
         "representedAsKeyWindow": atom(True),
     })
-    hierarchy = add({"$class": cls_hierarchy, "displayItems": array([window]), "appInfo": NULL, "serverVersion": atom(7)})
+    hierarchy = add({"$class": cls_hierarchy, "1": array([window]), "2": NULL, "serverVersion": atom(7)})
     attachment = add({
         "$class": cls_response,
         "0": hierarchy,

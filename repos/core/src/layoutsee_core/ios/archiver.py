@@ -16,6 +16,7 @@ warning。CGRect 没有独立类型标记，用 decode_rect() 做多重格式宽
 from __future__ import annotations
 
 import plistlib
+import re
 from plistlib import UID
 
 from ..errors import CoreError
@@ -48,6 +49,11 @@ _NUMBER_VALUE_KEYS = (
 _ERROR_DOMAIN_KEYS = ("nsdomain", "domain")
 _ERROR_CODE_KEYS = ("nscode", "code")
 _ERROR_USERINFO_KEYS = ("nsuserinfo", "userinfo", "user_info")
+
+# NSStringFromCGRect 输出形态："{{x, y}, {w, h}}"（允许负数与小数）
+RECT_STRING_PATTERN = re.compile(
+    r"^\{\{\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\}\s*,\s*\{\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\}\}$"
+)
 
 
 class _Archiver:
@@ -101,19 +107,29 @@ class _Archiver:
         raise ValueError(f"不支持的归档类型：{type(value).__name__}")
 
 
-def encode_keyed_object(fields: dict[str, object], class_name: str, class_chain: list[str] | None = None) -> bytes:
+def encode_keyed_object(
+    fields: dict[str, object],
+    class_name: str,
+    class_chain: list[str] | None = None,
+    *,
+    scalar_keys_by_reference: tuple[str, ...] = (),
+) -> bytes:
     """把 {键: 值} 编码为一个 keyed-archiver 类实例（encode_attachment 的通用底座）。
 
-    标量（bool/int/float）按 Apple 的 encodeInteger/encodeBool/encodeDouble 行为**内联**写入实例
-    dict——若改成 $objects + UID 引用，Foundation 的 decodeIntegerForKey:/decodeBoolForKey: 会抛
-    "value for key" 异常（2026-10-25 真机验证：LookinServer 解码崩溃的根因）。其余类型仍走
-    $objects + UID 引用（encodeObject 行为）。
+    标量（bool/int/float）默认按 Apple 的 encodeInteger/encodeBool/encodeDouble 行为**内联**写入
+    实例 dict——若改成 $objects + UID 引用，Foundation 的 decodeIntegerForKey:/decodeBoolForKey:
+    会抛异常（2026-10-25 真机验证：LookinServer 解码崩溃的根因）。
+
+    scalar_keys_by_reference 中的键则按 encodeObject 行为处理：即使是标量也放入 $objects 并以
+    UID 引用——decodeObjectForKey: 只认引用形态，内联标量会被解成 nil（2026-10-26 插桩验证：
+    AllAttrGroups 的 NSNumber(oid) 载荷被服务器解为 null 的根因）。
     """
     archiver = _Archiver()
     chain = list(class_chain) if class_chain else [class_name, "NSObject"]
     encoded_fields: dict[str, object] = {}
     for key, value in fields.items():
-        if isinstance(value, (bool, int, float)):
+        by_reference = str(key) in scalar_keys_by_reference or isinstance(value, (str, bytes, bytearray, dict, list, tuple)) or value is None
+        if isinstance(value, (bool, int, float)) and not by_reference:
             encoded_fields[str(key)] = value
         else:
             encoded_fields[str(key)] = archiver.reference(value)
@@ -131,11 +147,16 @@ def encode_keyed_object(fields: dict[str, object], class_name: str, class_chain:
 
 
 def encode_attachment(data: object, data_type: int = 0) -> bytes:
-    """编码 LookinConnectionAttachment 请求载荷：{"0": data, "1": dataType}（请求侧 dataType 恒 0）。"""
+    """编码 LookinConnectionAttachment 请求载荷：{"0": data, "1": dataType}（请求侧 dataType 恒 0）。
+
+    键 "1"（dataType）服务器用 decodeIntegerForKey: 读 → 内联；键 "0"（data）服务器用
+    decodeObjectForKey: 读 → 一律引用形态（含 NSNumber 标量）。
+    """
     return encode_keyed_object(
         {"0": data, "1": data_type},
         class_name="LookinConnectionAttachment",
         class_chain=["LookinConnectionAttachment", "NSObject"],
+        scalar_keys_by_reference=("0",),
     )
 
 
@@ -308,11 +329,17 @@ class _Unarchiver:
 
 
 def decode_rect(value: object) -> dict[str, float] | None:
-    """CGRect 宽松解码（真机校准点）。
+    """CGRect 宽松解码（真机校准点，2026-10-26 实弹确认首选形态为 NSStringFromCGRect 字符串）。
 
-    兼容：dict（X/Y/Width/Height、NS.x/NS.y/NS.width/NS.height、origin/size 嵌套，键名不分大小写）
-    或 4 元素数组 [x, y, w, h]。返回 {"x","y","width","height"}（float）；无法识别返回 None。
+    兼容：NSString "{{x, y}, {w, h}}"（encodeCGRect 实际输出）、dict（X/Y/Width/Height、
+    NS.x/NS.y/NS.width/NS.height、origin/size 嵌套，键名不分大小写）或 4 元素数组 [x, y, w, h]。
+    返回 {"x","y","width","height"}（float）；无法识别返回 None。
     """
+    if isinstance(value, str):
+        match = RECT_STRING_PATTERN.match(value.strip())
+        if match:
+            return dict(zip(("x", "y", "width", "height"), (float(item) for item in match.groups())))
+        return None
     if isinstance(value, (list, tuple)) and len(value) == 4:
         numbers = _float_list(value)
         if numbers is not None:

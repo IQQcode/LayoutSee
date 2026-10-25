@@ -296,8 +296,8 @@ class ArchiverTest(unittest.TestCase):
         self.assertEqual(root["_classes"][0], "LookinConnectionResponseAttachment")
         data = root["0"]
         self.assertEqual(data["_classes"][0], "LookinHierarchyInfo")
-        self.assertIsNone(data["appInfo"])
-        items = data["displayItems"]
+        self.assertIsNone(data["2"])  # appInfo（数字键，真实编码形态）
+        items = data["1"]
         self.assertEqual(len(items), 1)
         window = items[0]
         self.assertEqual(window["_classes"][0], "LookinDisplayItem")
@@ -307,8 +307,8 @@ class ArchiverTest(unittest.TestCase):
         self.assertEqual(window["viewObject"]["classChainList"][0], "UIWindow")
         label = window["subitems"][0]
         self.assertEqual(label["frame"]["Width"], 200.0)
-        attr = label["attributesGroupList"][0]["attrSections"][0]["attrs"][0]
-        self.assertEqual(attr["identifier"], "text")
+        attr = label["attributesGroupList"][0]["attrSections"][0]["attributes"][0]
+        self.assertEqual(attr["identifier"], "lb_t_t")
         self.assertEqual(attr["value"], "你好，世界")
 
     def test_decode_keeps_unknown_class_chain(self) -> None:
@@ -434,12 +434,12 @@ def hierarchy_payload(items: list[object], name: str = "LookinDemo") -> dict[str
 
 
 def make_window() -> dict[str, object]:
-    """构造 decode 后形态的 Lookin 树：UIWindow → UILabel（自带 text/label 属性组）。"""
+    """构造 decode 后形态的 Lookin 树（键形态按 2026-10-26 实弹校准：hidden/attributes/短码）。"""
     return {
         "_classes": ["LookinDisplayItem", "NSObject"],
         "frame": {"X": 0.0, "Y": 0.0, "Width": 390.0, "Height": 844.0},
         "alpha": 1.0,
-        "isHidden": False,
+        "hidden": False,
         "viewObject": {"oid": 1, "classChainList": ["UIWindow", "UIView"], "_classes": ["LookinObject", "NSObject"]},
         "subitems": [
             {
@@ -447,12 +447,11 @@ def make_window() -> dict[str, object]:
                 "frame": {"X": 20.0, "Y": 100.0, "Width": 200.0, "Height": 44.0},
                 "viewObject": {"oid": 2, "classChainList": ["UILabel", "UIView"], "_classes": ["LookinObject", "NSObject"]},
                 "attributesGroupList": [{
-                    "identifier": "Attributes",
+                    "identifier": "la",
                     "attrSections": [{
-                        "identifier": "Basic",
-                        "attrs": [
-                            {"identifier": "text", "attrType": 1, "value": "你好"},
-                            {"identifier": "accessibilityLabel", "value": "标题"},
+                        "identifier": "lb_t",
+                        "attributes": [
+                            {"identifier": "lb_t_t", "attrType": 24, "value": "你好"},
                         ],
                     }],
                 }],
@@ -463,13 +462,13 @@ def make_window() -> dict[str, object]:
 
 
 def groups_by_oid() -> dict[int, list[object]]:
-    """HierarchyDetails 聚合结果：oid=2 补充 accessibilityIdentifier。"""
+    """AllAttrGroups(210) 聚合结果：oid=2 补充 userInteractionEnabled。"""
     return {
         2: [{
-            "identifier": "G",
+            "identifier": "vl",
             "attrSections": [{
-                "identifier": "S",
-                "attrs": [{"identifier": "accessibilityIdentifier", "value": "titleLabel"}],
+                "identifier": "v_i",
+                "attributes": [{"identifier": "vl_i_i", "attrType": 14, "value": True}],
             }],
         }]
     }
@@ -553,9 +552,7 @@ class DriverTest(unittest.TestCase):
         label = nodes[1]
         self.assertEqual(label["boundsPx"], {"left": 60, "top": 300, "right": 660, "bottom": 432})
         self.assertEqual(label["text"], "你好")
-        self.assertEqual(label["resourceId"], "titleLabel")
-        self.assertEqual(label["contentDescription"], "标题")
-        self.assertTrue(label["enabled"])
+        self.assertTrue(label["enabled"])  # groups_by_oid 补充的 vl_i_i=True
         self.assertFalse(label["clickable"])
         self.assertFalse(label["scrollable"])
 
@@ -602,7 +599,7 @@ class DriverTest(unittest.TestCase):
         nodes, _, _ = normalize_nodes(result["xml"], {"width": 1170, "height": 2532})
         self.assertGreaterEqual(len(nodes), 2)
         self.assertEqual(nodes[1]["text"], "你好")
-        self.assertEqual(nodes[1]["resourceId"], "titleLabel")
+        self.assertTrue(nodes[1]["enabled"])
 
 
 def sim_app_info() -> dict[str, object]:

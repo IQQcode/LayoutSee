@@ -22,19 +22,18 @@ from .client import LookinClient
 from ._utils import as_int
 from .usbmux import UsbmuxClient
 
-# XML 属性提取规则表：XML 属性名 → 匹配规则（真机校准时只改这里）
-# - all：attr.identifier 需同时包含的全部关键词（小写宽松匹配）
-# - any：attr.identifier 命中任一关键词即可（attr 顺序即优先级，首个命中者生效）
+# XML 属性提取规则表：XML 属性名 → 匹配规则
+# 精确 short-code 来自 LookinAttrIdentifiers.m（2026-10-26 依 LookinDemo 实弹校准）：
+# - exact：attr.identifier 精确命中（首个命中生效）
 # - classes：仅当节点类名（classChainList[0] 小写）命中其一才应用；缺省不限类
-# - default：未命中时的缺省值（布尔输出 "true"/"false"，文本缺省空串）
+# - default：未命中时的缺省值
+# 限制：LookinServer 属性组不含 accessibilityIdentifier/Label（resource-id/content-desc 留空，
+# 侯选来源 ivarTraces 在静态树中为 null，后续经 FetchObject/TraceManager 路径补）
 ATTR_EXTRACTION_RULES: dict[str, dict[str, object]] = {
-    "text": {"all": ("text",), "classes": ("uilabel", "uitextview", "uitextfield"), "default": ""},
-    # accessibilityIdentifier 命中 "identifier"；避免用 "accessibility" 兜底（会误匹配 Label）
-    "resource-id": {"any": ("identifier",), "default": ""},
-    "content-desc": {"all": ("accessibility", "label"), "default": ""},
-    "enabled": {"any": ("enabled",), "default": True},
-    "clickable": {"any": ("click",), "default": False},
-    "scrollable": {"any": ("scroll",), "default": False},
+    "text": {"exact": ("lb_t_t", "tf_t_t", "te_t_t"), "classes": ("uilabel", "uitextfield", "uitextview"), "default": ""},
+    "enabled": {"exact": ("vl_i_i",), "default": True},  # userInteractionEnabled
+    "clickable": {"exact": ("ct_e_e",), "default": False},  # UIControl enabled
+    "scrollable": {"exact": (), "default": False},  # 由类名（UIScrollView 链）判定，见 _build_node
 }
 
 # 逐节点属性拉取上限：超过后其余节点无 text/resource-id（记 warning）
@@ -394,6 +393,7 @@ def _build_node(
         bottom = max(0, round_px((frame["y"] + frame["height"]) * scale))
         attrs["bounds"] = f"[{left},{top}][{right},{bottom}]"
     flat_attrs = _flat_attrs(item, attr_groups_by_oid)
+    class_chain = _class_chain(item)
     for xml_attr, rule in ATTR_EXTRACTION_RULES.items():
         classes = rule.get("classes")
         if isinstance(classes, tuple) and class_name.lower() not in classes:
@@ -401,6 +401,8 @@ def _build_node(
             continue
         value = _match_attr(flat_attrs, rule)
         attrs[xml_attr] = _format_value(rule.get("default") if value is None else value)
+    # scrollable 由类链判定（UIScrollView 及子类）
+    attrs["scrollable"] = "true" if any(name == "UIScrollView" for name in class_chain) else "false"
     element = ET.SubElement(parent, "node", attrs)
     subitems = item.get("subitems")
     if isinstance(subitems, list):
@@ -409,13 +411,18 @@ def _build_node(
 
 
 def _node_class(item: dict[str, object]) -> str:
+    chain = _class_chain(item)
+    return chain[0] if chain else "UIView"
+
+
+def _class_chain(item: dict[str, object]) -> list[str]:
     for key in ("viewObject", "layerObject"):
         obj = item.get(key)
         if isinstance(obj, dict):
             chain = obj.get("classChainList")
             if isinstance(chain, list) and chain and isinstance(chain[0], str) and chain[0]:
-                return chain[0]
-    return "UIView"
+                return [str(name) for name in chain]
+    return []
 
 
 def _flat_attrs(item: dict[str, object], attr_groups_by_oid: dict[int, list[object]]) -> list[tuple[str, object]]:
@@ -437,7 +444,7 @@ def _flat_attrs(item: dict[str, object], attr_groups_by_oid: dict[int, list[obje
         if isinstance(sections, list):
             for section in sections:
                 if isinstance(section, dict):
-                    flat.extend(_attr_pairs(section.get("attrs")))
+                    flat.extend(_attr_pairs(section.get("attributes") or section.get("attrs")))
         flat.extend(_attr_pairs(group.get("attrs")))  # 宽松：组上直接挂 attrs 的形态
     return flat
 
@@ -452,15 +459,10 @@ def _attr_pairs(attrs: object) -> list[tuple[str, object]]:
 
 
 def _match_attr(flat_attrs: list[tuple[str, object]], rule: dict[str, object]) -> object | None:
-    all_keywords = rule.get("all") or ()
-    any_keywords = rule.get("any") or ()
+    exact = rule.get("exact") or ()
     for identifier, value in flat_attrs:
-        lowered = identifier.lower()
-        if all_keywords and not all(keyword in lowered for keyword in all_keywords):
-            continue
-        if any_keywords and not any(keyword in lowered for keyword in any_keywords):
-            continue
-        return value
+        if identifier in exact:
+            return value
     return None
 
 
