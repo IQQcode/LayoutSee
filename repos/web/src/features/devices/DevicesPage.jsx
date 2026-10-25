@@ -236,7 +236,7 @@ export function DevicesPage() {
 function IosEmptyGuide({ onBackToAndroid }) {
   return (
     <section className="table-card device-empty" style={{ padding: 20 }}>
-      <EmptyState icon={AppleLogo} title="还没有检测到 iOS 设备" description="被测 App 集成 LookinServer 后，USB 连接真机即可自动出现。">
+      <EmptyState icon={AppleLogo} title="还没有检测到 iOS 设备" description="被测 App 集成 LookinServer 后，USB 连接真机或运行模拟器即可自动出现。">
         <div className="setup-guide">
           <div className="guide-step">
             <span className="step-no" aria-hidden="true">1</span>
@@ -244,11 +244,11 @@ function IosEmptyGuide({ onBackToAndroid }) {
           </div>
           <div className="guide-step">
             <span className="step-no" aria-hidden="true">2</span>
-            <div><b>真机运行该 App 并保持前台</b><p>LayoutSee 只抓取集成了 LookinServer 且处于前台的应用，运行后不要切到后台。</p></div>
+            <div><b>真机或模拟器运行该 App 并保持前台</b><p>LayoutSee 只抓取集成了 LookinServer 且处于前台的应用；模拟器无需 USB，真机用数据线连接 Mac。</p></div>
           </div>
           <div className="guide-step">
             <span className="step-no" aria-hidden="true">3</span>
-            <div><b>USB 连接后自动出现</b><p>用数据线把 iPhone 连接到 Mac，设备会自动出现在本列表。</p></div>
+            <div><b>自动出现在本列表</b><p>注意 LookinServer 同一时刻只接受一个客户端：若开着 Lookin 官方客户端，请先退出它，设备才会出现在这里。</p></div>
           </div>
           <div style={{ marginTop: 4 }}>
             <Button onClick={onBackToAndroid}>返回 Android</Button>
