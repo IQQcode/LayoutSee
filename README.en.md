@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="./README.md">中文</a> · English<br>
-  <a href="#get-started">Get started</a> · <a href="#connect-your-agent">Connect your Agent</a> · <a href="#run-from-source">Run from source</a>
+  <a href="https://layoutsee-site.vercel.app/">Website</a> · <a href="#get-started">Get started</a> · <a href="#connect-your-agent">Connect your Agent</a> · <a href="#run-from-source">Run from source</a>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@ You can inspect the same structure yourself: click the screen to locate a tree n
 
 Currently supports **macOS + real Android devices**. iOS and HarmonyOS are UI previews; device integration is not implemented yet.
 
-1. Download a DMG from [Releases](https://github.com/IQQcode/LayoutSee/releases/latest): choose `arm64` for Apple Silicon or `x64` for Intel. You can also [run from source](#run-from-source). If macOS blocks an unsigned build, select “Open Anyway” in System Settings → Privacy & Security.
+1. Download a DMG from the [website](https://layoutsee-site.vercel.app/download.html) or [Releases](https://github.com/IQQcode/LayoutSee/releases/latest): choose `arm64` for Apple Silicon or `x64` for Intel. You can also [run from source](#run-from-source). If macOS blocks an unsigned build, select “Open Anyway” in System Settings → Privacy & Security.
 2. Enable Developer options and USB debugging, connect the phone using a data-capable USB cable, and approve the debugging prompt on the device.
 3. Open the device workbench to control the screen or capture a snapshot and inspect the view tree.
 

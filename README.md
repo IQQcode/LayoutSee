@@ -11,7 +11,7 @@
 
 <p align="center">
   中文 · <a href="./README.en.md">English</a><br>
-  <a href="#开始使用">开始使用</a> · <a href="#交给-agent">交给 Agent</a> · <a href="#从源码运行">从源码运行</a>
+  <a href="https://layoutsee-site.vercel.app/">官网</a> · <a href="#开始使用">开始使用</a> · <a href="#交给-agent">交给 Agent</a> · <a href="#从源码运行">从源码运行</a>
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@ LayoutSee 是面向移动端开发者、QA 与 AI Agent 的 macOS 工具。通�
 
 当前支持 **macOS + Android 真机**。iOS 与 HarmonyOS 仍为界面预览，尚未接入。
 
-1. 在 [Releases](https://github.com/IQQcode/LayoutSee/releases/latest) 下载 DMG：Apple Silicon 选 `arm64`，Intel 选 `x64`。也可[从源码运行](#从源码运行)。未签名包首次打开若被拦截，在「系统设置 → 隐私与安全性」中选择「仍要打开」。
+1. 在[官网下载页](https://layoutsee-site.vercel.app/download.html)或 [Releases](https://github.com/IQQcode/LayoutSee/releases/latest) 下载 DMG：Apple Silicon 选 `arm64`，Intel 选 `x64`。也可[从源码运行](#从源码运行)。未签名包首次打开若被拦截，在「系统设置 → 隐私与安全性」中选择「仍要打开」。
 2. 开启手机的开发者选项与 USB 调试，用支持数据传输的数据线连接 Mac，在手机上确认调试授权。
 3. 打开设备工作台，操作手机画面，或抓取快照查看视图树。
 
