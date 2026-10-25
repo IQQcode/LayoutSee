@@ -382,19 +382,12 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(context.exception.details["actualTag"], 9)
 
     def test_app_info_parses_screen_scale(self) -> None:
-        payload = response_attachment(
-            data={
-                "appName": "LookinDemo",
-                "appBundleIdentifier": "com.qmui.lookindemo",
-                "screenWidth": 390.0,
-                "screenHeight": 844.0,
-                "screenScale": 3.0,
-            },
-            background=False,
-        )
+        payload = response_attachment(data=app_info_payload(), background=False)
         info = client.LookinClient(FakeStream(frame_bytes(201, 1, payload))).app_info()
-        self.assertEqual(info["data"]["screenScale"], 3.0)
-        self.assertEqual(info["data"]["appBundleIdentifier"], "com.qmui.lookindemo")
+        self.assertEqual(info["screenScale"], 3.0)
+        self.assertEqual(info["appBundleIdentifier"], "com.qmui.lookindemo")
+        self.assertEqual(info["appName"], "LookinDemo")
+        self.assertEqual(info["screenWidth"], 390.0)
         self.assertIs(info["appIsInBackground"], False)
 
     def test_hierarchy_details_merges_batches(self) -> None:
@@ -417,6 +410,28 @@ class ClientTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # driver
 # ---------------------------------------------------------------------------
+
+def app_info_payload(name: str = "LookinDemo") -> dict[str, object]:
+    """真实 LookinAppInfo 编码键形态（LookinAppInfo.m：数字键为主、部分属性名，2026-10-25 真机校准）。"""
+    return {
+        "1": None,  # screenshot（needImages=False 时为 null）
+        "2": None,  # appIcon
+        "3": "iPhone 18 Pro",  # deviceDescription
+        "4": "27.0",  # osDescription
+        "5": name,  # appName
+        "6": 390.0,  # screenWidth
+        "7": 844.0,  # screenHeight
+        "8": 0,  # deviceType（0=Simulator）
+        "appBundleIdentifier": "com.qmui.lookindemo",
+        "screenScale": 3.0,
+        "serverVersion": 0,
+    }
+
+
+def hierarchy_payload(items: list[object], name: str = "LookinDemo") -> dict[str, object]:
+    """真实 LookinHierarchyInfo 编码键形态（1=displayItems 2=appInfo）。"""
+    return {"1": items, "2": app_info_payload(name)}
+
 
 def make_window() -> dict[str, object]:
     """构造 decode 后形态的 Lookin 树：UIWindow → UILabel（自带 text/label 属性组）。"""
@@ -528,7 +543,7 @@ class DriverTest(unittest.TestCase):
 
     def test_build_xml_fields_and_bounds(self) -> None:
         warnings: list[str] = []
-        xml = driver.build_xml({"displayItems": [make_window()]}, 3.0, groups_by_oid(), warnings)
+        xml = driver.build_xml([make_window()], 3.0, groups_by_oid(), warnings)
         self.assertEqual(warnings, [])
         self.assertIn('<hierarchy rotation="0">', xml)
         # 直接走生产解析链路 normalize_nodes 断言，同时验证生成的 XML 可被快照管线消费
@@ -551,7 +566,7 @@ class DriverTest(unittest.TestCase):
             "subitems": [],
         }
         warnings: list[str] = []
-        xml = driver.build_xml({"displayItems": [item]}, 1.0, {}, warnings)
+        xml = driver.build_xml([item], 1.0, {}, warnings)
         nodes, _, _ = normalize_nodes(xml, {"width": 100, "height": 100})
         self.assertEqual(nodes[0]["boundsPx"], {"left": 0, "top": 0, "right": 0, "bottom": 0})
         self.assertEqual(len(warnings), 1)
@@ -572,22 +587,10 @@ class DriverTest(unittest.TestCase):
     def test_capture_happy_path(self) -> None:
         frames = (
             frame_bytes(200, 1, response_attachment(server_version=7))
-            + frame_bytes(
-                201,
-                2,
-                response_attachment(
-                    data={
-                        "appName": "LookinDemo",
-                        "appBundleIdentifier": "com.qmui.lookindemo",
-                        "screenWidth": 390.0,
-                        "screenHeight": 844.0,
-                        "screenScale": 3.0,
-                    },
-                    background=False,
-                ),
-            )
-            + frame_bytes(202, 3, response_attachment(data={"displayItems": [make_window()]}))
-            + frame_bytes(203, 4, response_attachment(data=groups_by_oid(), total=1, current=1))
+            + frame_bytes(201, 2, response_attachment(data=app_info_payload(), background=False))
+            + frame_bytes(202, 3, response_attachment(data=hierarchy_payload([make_window()])))
+            + frame_bytes(210, 4, response_attachment(data=[]))  # window oid=1 无属性组
+            + frame_bytes(210, 5, response_attachment(data=groups_by_oid()[2]))  # label oid=2
         )
         ios_driver = driver.IOSDeviceDriver(StubUsbmux([FakeStream(frames)]))
         result = ios_driver.capture(UDID)
@@ -603,15 +606,8 @@ class DriverTest(unittest.TestCase):
 
 
 def sim_app_info() -> dict[str, object]:
-    """模拟器 app_info 响应的 data 字段（前台 PackSmart）。"""
-    return {
-        "appName": "PackSmart",
-        "appBundleIdentifier": "com.demo.packsmart",
-        "deviceDescription": "iPhone 18 Pro",
-        "screenWidth": 390.0,
-        "screenHeight": 844.0,
-        "screenScale": 3.0,
-    }
+    """模拟器 app_info 响应的 data 字段（真实数字键形态，前台 PackSmart）。"""
+    return app_info_payload("PackSmart")
 
 
 class SimulatorDriverTest(unittest.TestCase):
@@ -661,8 +657,9 @@ class SimulatorDriverTest(unittest.TestCase):
         frames = (
             frame_bytes(200, 1, response_attachment(server_version=7))
             + frame_bytes(201, 2, response_attachment(data=sim_app_info()))
-            + frame_bytes(202, 3, response_attachment(data={"displayItems": [make_window()]}))
-            + frame_bytes(203, 4, response_attachment(data=groups_by_oid(), total=1, current=1))
+            + frame_bytes(202, 3, response_attachment(data=hierarchy_payload([make_window()], name="PackSmart")))
+            + frame_bytes(210, 4, response_attachment(data=[]))  # window oid=1 无属性组
+            + frame_bytes(210, 5, response_attachment(data=groups_by_oid()[2]))  # label oid=2
         )
         server = ReplayServer(frames)
         try:

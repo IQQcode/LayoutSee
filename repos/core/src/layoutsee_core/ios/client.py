@@ -23,14 +23,41 @@ REQUEST_PING = 200
 REQUEST_APP = 201
 REQUEST_HIERARCHY = 202
 REQUEST_HIERARCHY_DETAILS = 203
+REQUEST_ALL_ATTR_GROUPS = 210
 
 SUPPORTED_SERVER_VERSION = 7
 PROBE_TIMEOUT = 0.5
 REQUEST_TIMEOUT = 5.0
+ATTR_TIMEOUT = 2.0  # AllAttrGroups 单节点超时：回环 RTT 毫秒级，超时视为对象不可用
 MAX_BATCHES = 64
+
+# LookinError 错误码（LookinDefines.h）：对象不存在（oid 查表失败，逐节点拉属性的常态降级）
+LOOKIN_ERR_CODE_OBJ_NOT_FOUND = -500
 
 # attrGroups 聚合认可的组字段名（小写、去下划线后比较；真机校准点）
 _GROUP_KEYS = {"attributesgroups", "attrgroups", "groups", "attrs", "attrsections"}
+
+
+def _normalize_app_info(payload: object) -> dict[str, object]:
+    """LookinAppInfo 数字键 → 业务键（键名语义见上方校准注释）。"""
+    p = payload if isinstance(payload, dict) else {}
+    return {
+        "appName": p.get("5"),
+        "appBundleIdentifier": p.get("appBundleIdentifier"),
+        "deviceDescription": p.get("3"),
+        "osDescription": p.get("4"),
+        "deviceType": p.get("8"),
+        "screenWidth": p.get("6"),
+        "screenHeight": p.get("7"),
+        "screenScale": p.get("screenScale"),
+    }
+
+# 请求参数与响应键名（真机校准点，2026-10-25 依 iOS 27 模拟器实测校准）：
+# - App(201) 请求 data 必须是 NSDictionary：{"needImages": bool, "local": []}，否则 LookinServer 回 Inner error
+# - Hierarchy(202) 请求 data 建议 {"clientVersion": "1.2.8"}
+# - LookinAppInfo 响应键为数字：1=screenshot 2=appIcon 3=deviceDescription 4=osDescription
+#   5=appName 6=screenWidth 7=screenHeight 8=deviceType；bundleId/scale 等用属性名
+# - LookinHierarchyInfo 响应键：1=displayItems 2=appInfo 3=colorAlias 4=collapsedClassList
 
 
 class LookinClient:
@@ -54,19 +81,53 @@ class LookinClient:
         return version
 
     def app_info(self) -> dict[str, object]:
-        """App 信息：{"data": LookinAppInfo, "appIsInBackground": bool|None, "serverVersion": int}。"""
-        attach, warnings = self._request(REQUEST_APP, timeout=PROBE_TIMEOUT)
-        return {
-            "data": attach.get("0"),
+        """App 信息（请求参数按 LookinServer 要求必须为 dict），返回规整后的业务键。"""
+        attach, warnings = self._request(
+            REQUEST_APP,
+            timeout=PROBE_TIMEOUT,
+            data={"needImages": False, "local": []},
+        )
+        result = _normalize_app_info(attach.get("0"))
+        result.update({
             "appIsInBackground": attach.get("appIsInBackground"),
             "serverVersion": attach.get("lookinServerVersion"),
             "warnings": warnings,
-        }
+        })
+        return result
 
     def hierarchy(self) -> dict[str, object]:
-        """层级树：{"data": LookinHierarchyInfo, "warnings": [...]}。"""
-        attach, warnings = self._request(REQUEST_HIERARCHY, timeout=REQUEST_TIMEOUT)
-        return {"data": attach.get("0"), "warnings": warnings}
+        """层级树：{"displayItems": [...], "appInfo": {规整键}|{}, "warnings": [...]}。
+
+        树节点为 LookinDisplayItem（属性名键：subitems/frame/viewObject/layerObject/attributesGroupList...）。
+        注意 attributesGroupList 在 static 树里为空，属性组需逐节点 AllAttrGroups 获取。
+        """
+        attach, warnings = self._request(
+            REQUEST_HIERARCHY,
+            timeout=REQUEST_TIMEOUT,
+            data={"clientVersion": "1.2.8"},
+        )
+        payload = attach.get("0") if isinstance(attach.get("0"), dict) else {}
+        return {
+            "displayItems": payload.get("1") if isinstance(payload.get("1"), list) else [],
+            "appInfo": _normalize_app_info(payload.get("2")),
+            "warnings": warnings,
+        }
+
+    def all_attr_groups(self, oid: int) -> dict[str, object]:
+        """按 oid 拉取属性组：{"attrGroups": [...], "warnings": [...]}。
+
+        对象不存在（ObjNotFound，LookinError -500）是常态（layer 未注册/已释放），返回空列表。
+        """
+        try:
+            attach, warnings = self._request(REQUEST_ALL_ATTR_GROUPS, timeout=ATTR_TIMEOUT, data=int(oid))
+        except CoreError as error:
+            error_detail = error.details.get("error") if isinstance(error.details, dict) else None
+            code = error_detail.get("code") if isinstance(error_detail, dict) else None
+            if code == LOOKIN_ERR_CODE_OBJ_NOT_FOUND:
+                return {"attrGroups": [], "warnings": [f"oid={oid} 对象不存在（已释放或未注册）。"]}
+            raise
+        data = attach.get("0")
+        return {"attrGroups": data if isinstance(data, list) else [], "warnings": warnings}
 
     def hierarchy_details(self) -> dict[str, object]:
         """分批读取 HierarchyDetails 并宽松聚合（attrGroups 按 oid 归并、图片字段丢弃）。"""

@@ -4,7 +4,8 @@
 - 端口：真机 USB 47175-47179（usbmuxd 隧道）；模拟器 47164-47169（与主机共享 loopback，直连）
 - 抓取流程：逐端口连接（失败继续下一端口）→ Ping(0.5s) → 版本校验 → app_info(0.5s)
   → 只接受 appIsInBackground=False 的前台 App（iOS 前台唯一，结果确定）
-  → hierarchy(5s) + hierarchy_details(5s，失败降级：树照出、attrGroups 空、warnings 注明)
+  → Hierarchy(202) 取整树 → 逐节点 AllAttrGroups(210) 拉属性组（上限 ATTR_NODES_LIMIT，
+    对象不存在/注册表查询失败时静默空降级，快照仍可用）
   → 生成 uiautomator 风格 XML（bounds = frame × screenScale 四舍五入取整、负值截 0）
 - XML 属性提取规则集中在 ATTR_EXTRACTION_RULES，真机校准时只改这一处
 - 模拟器约束：LookinServer 单客户端——同一时刻 Lookin 官方客户端连着时端口不可达（枚举不到属正常）
@@ -36,6 +37,11 @@ ATTR_EXTRACTION_RULES: dict[str, dict[str, object]] = {
     "scrollable": {"any": ("scroll",), "default": False},
 }
 
+# 逐节点属性拉取上限：超过后其余节点无 text/resource-id（记 warning）
+ATTR_NODES_LIMIT = 600
+# 连续拿到空属性组的次数达到该值即早停（对象注册表失效时快速放弃，避免拖慢抓取）
+ATTR_EMPTY_STREAK_LIMIT = 12
+
 
 def round_px(value: float) -> int:
     """四舍五入取整（Python round 是银行家舍入，这里显式 half-up）。"""
@@ -43,35 +49,31 @@ def round_px(value: float) -> int:
 
 
 def flatten_app_info(info: dict[str, object]) -> dict[str, object]:
-    """把 App 响应抹平为诊断/快照共用的扁平 dict（缺失字段留空）。"""
-    data = info.get("data") if isinstance(info.get("data"), dict) else {}
+    """把 client.app_info 规整后的 App 信息抹平为诊断/快照共用的扁平 dict（缺失字段留空）。"""
     return {
-        "appName": data.get("appName") or "",
-        "appBundleIdentifier": data.get("appBundleIdentifier") or "",
-        "deviceDescription": data.get("deviceDescription") or "",
-        "osDescription": data.get("osDescription") or "",
-        "deviceType": data.get("deviceType"),
-        "screenWidth": _as_float(data.get("screenWidth")),
-        "screenHeight": _as_float(data.get("screenHeight")),
-        "screenScale": _as_float(data.get("screenScale")),
+        "appName": info.get("appName") or "",
+        "appBundleIdentifier": info.get("appBundleIdentifier") or "",
+        "deviceDescription": info.get("deviceDescription") or "",
+        "osDescription": info.get("osDescription") or "",
+        "deviceType": info.get("deviceType"),
+        "screenWidth": _as_float(info.get("screenWidth")),
+        "screenHeight": _as_float(info.get("screenHeight")),
+        "screenScale": _as_float(info.get("screenScale")),
     }
 
 
 def build_xml(
-    data: object,
+    display_items: object,
     scale: float,
     attr_groups_by_oid: dict[int, list[object]],
     warnings: list[str],
 ) -> str:
-    """把解码后的 Lookin 层级树渲染为 uiautomator 风格 XML。"""
+    """把 LookinDisplayItem 树渲染为 uiautomator 风格 XML。"""
     root = ET.Element("hierarchy", {"rotation": "0"})
-    display_items: list[object] = []
-    if isinstance(data, dict) and isinstance(data.get("displayItems"), list):
-        display_items = data["displayItems"]
-    elif data is not None:
-        # data 非 None 却没有 displayItems：真实键名待真机校准，记 warning 不报错
-        warnings.append(f"hierarchy 响应缺少 displayItems（键名需真机校准）：{type(data).__name__}")
-    for index, item in enumerate(display_items):
+    items = display_items if isinstance(display_items, list) else []
+    if display_items is not None and not items:
+        warnings.append("hierarchy 响应未提供 displayItems（键名需校准）。")
+    for index, item in enumerate(items):
         _build_node(root, item, index, scale, attr_groups_by_oid, warnings)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
@@ -240,19 +242,17 @@ class IOSDeviceDriver:
             client, info, port = selected
             warnings: list[str] = []
             hierarchy = client.hierarchy()  # hierarchy 失败则整体失败
-            details: dict[str, object] = {"attrGroupsByOid": {}, "batches": [], "droppedImageFieldCount": 0, "warnings": []}
-            try:
-                details = client.hierarchy_details()
-            except CoreError as error:
-                warnings.append(f"属性拉取失败，已降级为无属性树：{error.message}")
-            warnings.extend(info.get("warnings") or [])
-            warnings.extend(hierarchy.get("warnings") or [])
-            warnings.extend(details.get("warnings") or [])
-            app = flatten_app_info(info)
+            display_items = hierarchy.get("displayItems") or []
+            # App 信息优先用 Hierarchy 响应自带值，缺失回落探测阶段的 App 响应
+            app_payload = hierarchy.get("appInfo") if isinstance(hierarchy.get("appInfo"), dict) and hierarchy.get("appInfo") else info
+            app = flatten_app_info(app_payload)
             app["port"] = port
             scale = float(app.get("screenScale") or 1)
-            attr_groups = details.get("attrGroupsByOid") if isinstance(details.get("attrGroupsByOid"), dict) else {}
-            xml = build_xml(hierarchy.get("data"), scale, attr_groups, warnings)
+            attr_groups, attr_warnings = self._collect_attr_groups(client, display_items)
+            warnings.extend(attr_warnings)
+            warnings.extend(info.get("warnings") or [])
+            warnings.extend(hierarchy.get("warnings") or [])
+            xml = build_xml(display_items, scale, attr_groups, warnings)
             result: dict[str, object] = {
                 "xml": xml,
                 "window_size": {
@@ -263,7 +263,7 @@ class IOSDeviceDriver:
                 "warnings": warnings,
             }
             if include_raw:
-                result["raw"] = {"hierarchy": hierarchy.get("data"), "details": details}
+                result["raw"] = {"displayItems": display_items, "appInfo": hierarchy.get("appInfo")}
             return result
         finally:
             if selected is not None:
@@ -271,6 +271,66 @@ class IOSDeviceDriver:
                     selected[0].stream.close()
                 except OSError:
                     pass
+
+    def _collect_attr_groups(
+        self,
+        client: LookinClient,
+        display_items: list[object],
+    ) -> tuple[dict[int, list[object]], list[str]]:
+        """逐节点 AllAttrGroups 收集属性组：{oid: [attrGroup...]}（view/layer 双写）。
+
+        上限 ATTR_NODES_LIMIT；对象不存在（layer 未注册/已释放）是常态，静默空降级。
+        已知限制：LookinServer 1.2.8 在 iOS 27 上 oid 注册表查询失败（官方 HierarchyDetails
+        同样受影响），此时全部为空，快照仍可用（无 text/resource-id），详见 specs summary。
+        """
+        groups_by_oid: dict[int, list[object]] = {}
+        warnings: list[str] = []
+        fetched = 0
+        empty = 0
+        empty_streak = 0
+        stack = list(display_items)
+        while stack:
+            item = stack.pop()
+            if not isinstance(item, dict):
+                continue
+            subitems = item.get("subitems")
+            if isinstance(subitems, list):
+                stack.extend(subitems)
+            layer = item.get("layerObject") if isinstance(item.get("layerObject"), dict) else {}
+            view = item.get("viewObject") if isinstance(item.get("viewObject"), dict) else {}
+            oid = as_int(layer.get("oid"))
+            if oid is None:
+                oid = as_int(view.get("oid"))
+            if oid is None or oid in groups_by_oid:
+                continue
+            if fetched >= ATTR_NODES_LIMIT:
+                warnings.append(f"属性节点数超过上限 {ATTR_NODES_LIMIT}，超出部分无 text/resource-id。")
+                break
+            try:
+                result = client.all_attr_groups(oid)
+            except CoreError as error:
+                warnings.append(f"oid={oid} 属性拉取失败：{error.message}")
+                continue
+            fetched += 1
+            groups = result.get("attrGroups") or []
+            if groups:
+                groups_by_oid[oid] = groups
+                view_oid = as_int(view.get("oid"))
+                if view_oid is not None and view_oid != oid:
+                    groups_by_oid[view_oid] = groups
+                empty_streak = 0
+            else:
+                empty += 1
+                empty_streak += 1
+                if empty_streak >= ATTR_EMPTY_STREAK_LIMIT:
+                    warnings.append(f"连续 {empty_streak} 个节点无属性组，提前结束属性拉取。")
+                    break
+        if empty and not groups_by_oid and display_items:
+            warnings.append(
+                "属性数据不可用：LookinServer 的对象注册表查询失败（iOS 27 上官方客户端同样受影响），"
+                "本次快照仅含层级与布局信息。"
+            )
+        return groups_by_oid, warnings
 
     def _selection_error(self, serial: str, attempts: list[dict[str, object]]) -> CoreError:
         codes = {str(item["code"]) for item in attempts if "code" in item}
