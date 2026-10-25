@@ -464,6 +464,9 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 return
             if sub == "readonly":
                 self._require_session()
+                if self._device_platform(device_id) == "ios":
+                    # iOS 恒只读：不放行切换，避免 descriptor 被翻转直到下轮刷新才被覆写
+                    raise CoreError("READ_ONLY_MODE", "iOS 设备恒为只读。", status=HTTPStatus.FORBIDDEN)
                 body = self._read_body()
                 self._envelope(self.context.registry.set_readonly(device_id, bool(body.get("readonly"))))
                 return

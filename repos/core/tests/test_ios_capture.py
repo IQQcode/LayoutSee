@@ -43,11 +43,12 @@ class StubIOSDriver:
     """duck-typing IOSDeviceDriver：不触 socket，返回固定枚举与抓取结果。"""
 
     def __init__(self) -> None:
+        self.usbmux_up = True  # 置 False 模拟 usbmuxd 失联
         self.capture_error: CoreError | None = None
         self.capture_udids: list[str] = []
 
     def available(self) -> bool:
-        return True
+        return self.usbmux_up
 
     def devices(self) -> list[dict[str, object]]:
         return [{
@@ -263,6 +264,24 @@ class IOSCaptureTest(unittest.TestCase):
         status, payload = self._post(f"/api/v1/devices/{IOS_DEVICE_ID}/snapshots")
         self.assertEqual(status, 409)
         self.assertEqual(payload["error"]["code"], "LOOKIN_APP_NOT_FOUND")
+
+    def test_registry_preserves_ios_devices_when_usbmuxd_unavailable(self) -> None:
+        """usbmuxd 失联：已登记 iOS 设备保留 connected，且 lastError 提示链路不可用。"""
+        self.ios.usbmux_up = False
+        items = {item["deviceId"]: item for item in self.context.registry.refresh()}
+        self.assertEqual(items[IOS_DEVICE_ID]["status"], "connected")
+        self.assertEqual(items[IOS_DEVICE_ID]["capabilities"], ["layout"])
+        last_error = self.context.registry.snapshot()["lastError"]
+        self.assertIsNotNone(last_error)
+        self.assertIn("IOS_UNAVAILABLE: 未检测到 usbmuxd，iOS 设备状态已保留", str(last_error))
+
+    def test_ios_readonly_route_blocked(self) -> None:
+        """iOS 设备不允许切换只读开关：路由直接拒绝，descriptor 不被翻转。"""
+        status, payload = self._request("PUT", f"/api/v1/devices/{IOS_DEVICE_ID}/readonly", {"readonly": False})
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["error"]["code"], "READ_ONLY_MODE")
+        items = {item["deviceId"]: item for item in self.context.registry.list_devices()}
+        self.assertTrue(items[IOS_DEVICE_ID]["readonly"])
 
     def test_android_capture_regression(self) -> None:
         status, payload = self._post(f"/api/v1/devices/{ANDROID_DEVICE_ID}/snapshots")

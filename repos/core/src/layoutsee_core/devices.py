@@ -121,11 +121,11 @@ class DeviceRegistry:
             except Exception:
                 errors.append("CORE_UNAVAILABLE: 设备枚举失败，已保留上一轮结果")
 
-        # iOS 扫描结果：None 表示枚举失败（保留上一轮 iOS 设备）；列表（含空）表示本轮扫描结果。
-        # ios.available() 为 False 时视为本轮无 iOS 设备（空列表），离线标记照常生效。
-        ios_scanned: list[dict[str, object]] | None = []
+        # iOS 扫描结果：None 表示本轮无扫描结果（usbmuxd 不可达或枚举失败，保留上一轮 iOS 设备）；
+        # 列表（含空）表示本轮扫描结果，空列表 = usbmuxd 正常但无设备，离线标记照常生效。
+        ios_scanned: list[dict[str, object]] | None = None
+        ios_unavailable = False
         if self.ios is not None:
-            ios_scanned = None
             if self.ios.available():
                 try:
                     ios_scanned = self.ios.devices()
@@ -133,6 +133,8 @@ class DeviceRegistry:
                     errors.append(f"{error.code}: {error.message}")
                 except Exception:
                     errors.append("LOOKIN_UNAVAILABLE: iOS 设备枚举失败，已保留上一轮结果")
+            else:
+                ios_unavailable = True
 
         now_ms = int(time.time() * 1000)
         with self._lock:
@@ -153,10 +155,15 @@ class DeviceRegistry:
                     descriptor["lastSeenAt"] = now_ms
                     self._devices[device_id] = descriptor
             if ios_scanned is None:
-                # iOS 枚举失败：保留上一轮 iOS 设备，不参与离线标记
+                # 本轮无 iOS 扫描结果：保留上一轮 iOS 设备，不参与离线标记
+                has_ios = False
                 for device_id, descriptor in self._devices.items():
                     if str(descriptor.get("platform")) == "ios":
+                        has_ios = True
                         seen.add(device_id)
+                if ios_unavailable and has_ios:
+                    # usbmuxd 失联但已有 iOS 设备在场：状态保留，同时提示链路不可用
+                    errors.append("IOS_UNAVAILABLE: 未检测到 usbmuxd，iOS 设备状态已保留")
             else:
                 for descriptor in ios_scanned:
                     device_id = str(descriptor["deviceId"])
