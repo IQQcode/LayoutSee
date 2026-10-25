@@ -12,6 +12,7 @@ from typing import Any
 from .adb import AdbClient
 from .devices import DeviceGate, DeviceRegistry
 from .errors import CoreError
+from .ios import IOSDeviceDriver
 
 MAX_NODES = 3000
 MAX_DEPTH = 128
@@ -209,11 +210,29 @@ def _base36(value: int) -> str:
     return result
 
 
+def build_ref_token(secret: bytes, snapshot_id: str) -> str:
+    """快照 ref 令牌：hmac(secret, snapshotId) 前 10 位十六进制（Android/iOS 共用）。"""
+    return hmac.new(secret, snapshot_id.encode("utf-8"), hashlib.sha256).hexdigest()[:10]
+
+
+def build_refs(nodes: list[dict[str, object]], ref_token: str) -> dict[str, object]:
+    """nodeKey → ref（r{token}_{base36 序号}）；Android/iOS 共用。"""
+    return {node["nodeKey"]: f"r{ref_token}_{_base36(index)}" for index, node in enumerate(nodes)}
+
+
 class CaptureCoordinator:
     """原子抓取：冻结写队列 → dump → 截图 → 归一化 → 发布；幂等键复用结果。"""
 
-    def __init__(self, adb: AdbClient, registry: DeviceRegistry, store: SnapshotStore, gate: DeviceGate) -> None:
+    def __init__(
+        self,
+        adb: AdbClient,
+        registry: DeviceRegistry,
+        store: SnapshotStore,
+        gate: DeviceGate,
+        ios: IOSDeviceDriver | None = None,
+    ) -> None:
         self.adb = adb
+        self.ios = ios
         self.registry = registry
         self.store = store
         self.gate = gate
@@ -246,7 +265,10 @@ class CaptureCoordinator:
         }
 
     def _capture(self, device_id: str) -> dict[str, object]:
-        serial = self.registry.serial_for(device_id)
+        descriptor = self.registry.device(device_id)
+        if str(descriptor.get("platform")) == "ios":
+            return self._capture_ios(device_id, descriptor)
+        serial = str(descriptor["serial"])
         before = self._context(serial)
         xml_text: str | None = None
         hierarchy_error: CoreError | None = None
@@ -293,8 +315,8 @@ class CaptureCoordinator:
                     "contentUrl": f"/api/v1/snapshots/{snapshot_id}/screenshot",
                 }
 
-        ref_token = hmac.new(self.store._secret, snapshot_id.encode("utf-8"), hashlib.sha256).hexdigest()[:10]
-        refs = {node["nodeKey"]: f"r{ref_token}_{_base36(index)}" for index, node in enumerate(nodes)}
+        ref_token = build_ref_token(self.store._secret, snapshot_id)
+        refs = build_refs(nodes, ref_token)
 
         snapshot: dict[str, object] = {
             "snapshotId": snapshot_id,
@@ -319,3 +341,58 @@ class CaptureCoordinator:
             "refs": refs,
             "ref_token": ref_token,
         }
+
+    def _capture_ios(self, device_id: str, descriptor: dict[str, object]) -> dict[str, object]:
+        """iOS 抓取：Lookin XML → 既有 normalize_nodes → 与 Android 同构的 record。
+
+        iOS 无截图链路：screenshot=None + warning 提示，Web 端按既有降级走线框渲染。
+        """
+        if self.ios is None:
+            raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取服务未装配。")
+        result = self.ios.capture(str(descriptor["serial"]))
+        xml_text = str(result.get("xml") or "")
+        window_size = self._ios_window_size(result)
+        nodes, elements, element_to_key = normalize_nodes(xml_text, window_size)
+
+        warnings = [str(item) for item in (result.get("warnings") or [])]
+        warnings.append("iOS 暂不支持截图，将以线框渲染。")
+
+        app = result.get("app")
+        foreground = dict(app) if isinstance(app, dict) else {}
+
+        snapshot_id = f"snap-{uuid.uuid4().hex[:12]}"
+        ref_token = build_ref_token(self.store._secret, snapshot_id)
+        refs = build_refs(nodes, ref_token)
+        snapshot: dict[str, object] = {
+            "snapshotId": snapshot_id,
+            "deviceId": device_id,
+            "createdAt": int(time.time() * 1000),
+            "foreground": foreground,
+            "windowSizePx": window_size,
+            "density": None,
+            "hierarchyAccuracy": "best_effort" if nodes else "limited",
+            "synchronization": "best_effort",
+            "screenshot": None,
+            "roots": [nodes[0]["nodeKey"]] if nodes else [],
+            "nodes": nodes,
+            "warnings": warnings,
+        }
+        return {
+            "snapshot": snapshot,
+            "png": None,
+            "xml": xml_text,
+            "elements": elements,
+            "element_to_key": element_to_key,
+            "refs": refs,
+            "ref_token": ref_token,
+        }
+
+    @staticmethod
+    def _ios_window_size(result: dict[str, object]) -> dict[str, int]:
+        """校验驱动返回的物理像素窗口尺寸（{width,height}），无效即失败。"""
+        raw = result.get("window_size")
+        width = int(raw.get("width") or 0) if isinstance(raw, dict) else 0
+        height = int(raw.get("height") or 0) if isinstance(raw, dict) else 0
+        if width <= 0 or height <= 0:
+            raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取结果缺少有效窗口尺寸。", retryable=True)
+        return {"width": width, "height": height}

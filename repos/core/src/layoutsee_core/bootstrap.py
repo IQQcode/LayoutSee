@@ -10,6 +10,7 @@ from .adb import AdbClient, find_adb
 from .audit import ActionLog
 from .contracts import CoreInfo
 from .devices import DeviceGate, DeviceRegistry
+from .ios import IOSDeviceDriver, UsbmuxClient
 from .logcat import LogcatHub
 from .media import MediaHub
 from .mcp_catalog import ToolDispatcher
@@ -52,9 +53,11 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
     audit = ActionLog(data_dir / "audit")
     adb = AdbClient(resolver=settings.adb_path)
     gate = DeviceGate()
-    registry = DeviceRegistry(adb, settings, audit, gate)
+    usbmux = UsbmuxClient()
+    ios = IOSDeviceDriver(usbmux)
+    registry = DeviceRegistry(adb, settings, audit, gate, ios=ios)
     store = SnapshotStore(secret=secrets.token_bytes(32))
-    capture = CaptureCoordinator(adb, registry, store, gate)
+    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios)
     plugins = PluginRegistry(data_dir / "plugins", builtin_dir=builtin_plugins_dir(), product_version=PRODUCT_VERSION)
     dispatcher = ToolDispatcher(adb=adb, registry=registry, store=store, gate=gate, capture=capture, audit=audit, plugins=plugins)
     media = MediaHub(adb)
@@ -80,6 +83,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
         media=media,
         ui_log=ui_log,
         logcat=logcat,
+        ios=ios,
     )
     server = bind_server(context, port_start)
     context.info = CoreInfo(
