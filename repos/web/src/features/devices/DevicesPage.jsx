@@ -240,7 +240,7 @@ function IosEmptyGuide({ onBackToAndroid }) {
         <div className="setup-guide">
           <div className="guide-step">
             <span className="step-no" aria-hidden="true">1</span>
-            <div><b>集成 LookinServer（仅 Debug 配置）</b><p>在被测 App 中通过 CocoaPods 或 SPM 集成 LookinServer 1.2.8，只在 Debug 构建启用。</p></div>
+            <div><b>集成 LookinServer（仅 Debug 配置）</b><p>在被测 App 中通过 CocoaPods 或 SPM 集成 LookinServer，只在 Debug 构建启用。</p></div>
           </div>
           <div className="guide-step">
             <span className="step-no" aria-hidden="true">2</span>

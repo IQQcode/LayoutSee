@@ -396,7 +396,7 @@ export function ElementTab({ device, deviceId, snapshotMeta, snapshotData, captu
               setMatchIndex(0);
               setHighlights({});
               onViewReset?.();
-              onToast?.(snapshotView ? "已返回实时投屏" : undefined);
+              onToast?.(snapshotView ? (device?.platform === "ios" ? "已返回快照视图" : "已返回实时投屏") : undefined);
             }}
           >
             重置

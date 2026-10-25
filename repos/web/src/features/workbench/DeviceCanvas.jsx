@@ -55,6 +55,14 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
     let active = true;
     retriesRef.current = 0;
     setMediaMode("loading");
+    // 换设备即清空上一台的画面状态：旧截图/错误/宽高不得残留到新设备画布
+    if (objectUrl.current) {
+      URL.revokeObjectURL(objectUrl.current);
+      objectUrl.current = null;
+    }
+    setFrame(null);
+    setFrameError(null);
+    setDims({ width: 0, height: 0 });
     api.settings().then((store) => {
       if (active) setIntervalMs(Math.min(3000, Math.max(400, store.screenshotFallbackIntervalMs ?? 800)));
     }).catch(() => {});
@@ -246,6 +254,11 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   }, [snapshot, highlights, snapshotView]);
 
   const sendAction = async (action) => {
+    // 非 Android 平台没有注入链路：入口直接拦截，不发起注定 403 的请求
+    if (!androidLive) {
+      onToast?.("iOS 设备暂不支持操作指令", "warning");
+      return;
+    }
     if (readonly) {
       onToast?.("只读模式已开启，写操作被拦截", "warning");
       return;
@@ -359,7 +372,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   const showPollingFrame = !liveActive && !snapshotView;
   const liveLabel = snapshotView
     ? "布局查看"
-    : frozen ? "已冻结" : inspect ? "审查模式" : readonly ? "只读模式" : liveActive ? "实时投屏" : "截图模式";
+    : frozen ? "已冻结" : inspect ? "审查模式" : readonly ? "只读模式" : liveActive ? "实时投屏" : androidLive ? "截图模式" : "快照模式";
   const labelTone = frozen ? "frozen" : inspect ? "inspect" : readonly ? "readonly" : "";
 
   return (
@@ -388,7 +401,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
             aria-hidden="true"
           />
           {snapshotView && contentUrl ? <img className="device-pixel" src={contentUrl} alt="快照画面" draggable="false" /> : null}
-          {showPollingFrame && frame ? <img className="device-pixel" src={frame} alt="" onLoad={(event) => setDims({ width: event.target.naturalWidth, height: event.target.naturalHeight })} draggable="false" /> : null}
+          {androidLive && showPollingFrame && frame ? <img className="device-pixel" src={frame} alt="" onLoad={(event) => setDims({ width: event.target.naturalWidth, height: event.target.naturalHeight })} draggable="false" /> : null}
           {showPollingFrame && !frame && !frameError ? <span className="frame-placeholder">{androidLive ? "正在获取画面…" : "暂无实时画面，抓取快照后查看布局"}</span> : null}
           {showPollingFrame && frameError ? <span className="frame-placeholder"><Info size={16} />画面获取失败，将自动重试</span> : null}
           {snapshot ? nodeOverlays() : null}

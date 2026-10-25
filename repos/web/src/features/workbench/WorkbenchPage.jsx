@@ -61,7 +61,9 @@ function RailButton({ icon, pulseIcon, pulseMs = 900, label, active, danger, dis
 
 export function ControlRail({ device, onBack, onAction, readonly, frozen, inspect, tab, onTab, snapshotView, capturing, captureDone, tabs = TAB_IDS }) {
   const press = (key) => onAction({ type: "press_key", key });
-  const writeDisabled = Boolean(readonly || frozen || device?.status !== "connected");
+  // iOS 恒只读：写类按钮直接置灰，不必等 readonly 状态回流，也不用点了才吃 403
+  const iosReadonly = device?.platform === "ios";
+  const writeDisabled = Boolean(readonly || frozen || device?.status !== "connected" || iosReadonly);
   const snapshotLocked = Boolean(snapshotView);
   // 抓取按钮三段式：待命相机 → 抓取中旋转加载 → 完成对勾
   const captureIcon = capturing ? glyphs.captureBusy : captureDone ? glyphs.captureDone : glyphs.capture;
@@ -86,9 +88,9 @@ export function ControlRail({ device, onBack, onAction, readonly, frozen, inspec
       />
       <div className="rail-divider" />
       <RailButton icon={captureIcon} label="抓取布局快照" disabled={device?.status !== "connected"} active={snapshotView} spinning={capturing} onClick={() => onAction({ type: "capture" })} />
-      <RailButton icon={frozen ? glyphs.thaw : glyphs.freeze} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
-      <RailButton icon={readonly ? glyphs.unlocked : glyphs.locked} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
-      <RailButton icon={inspect ? glyphs.browse : glyphs.inspect} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
+      <RailButton icon={frozen ? glyphs.thaw : glyphs.freeze} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
+      <RailButton icon={readonly ? glyphs.unlocked : glyphs.locked} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
+      <RailButton icon={inspect ? glyphs.browse : glyphs.inspect} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
       <div className="rail-divider" />
       {tabs.map((id) => (
         <RailButton key={id} icon={TabIcon(id, tab === id)} label={TAB_LABELS[id]} active={tab === id || (id === "plugins" && (isPluginTab(tab) || tab === "terminal"))} onClick={() => onTab(id)} />
@@ -235,6 +237,11 @@ export function WorkbenchPage() {
     setViewMode(isIos ? "snapshot" : "live");
   }, [deviceId, isIos]);
 
+  // iOS 没有常用 Tab：直达 /workbench/common 时重定向到元素查看，避免渲染空面板
+  useEffect(() => {
+    if (isIos && tab === "common") navigate(`/devices/${encodeURIComponent(deviceId)}/workbench/element`, { replace: true });
+  }, [isIos, tab, deviceId, navigate]);
+
   useEffect(() => {
     let active = true;
     api.latestSnapshot(deviceId)
@@ -281,14 +288,20 @@ export function WorkbenchPage() {
     }
   }, [capturing, device?.status, deviceId, toast]);
 
+  // 重置回默认视图：Android 回实时投屏，iOS 回快照视图（没有实时链路可回）
   const resetToLive = useCallback(() => {
-    setViewMode("live");
+    setViewMode(isIos ? "snapshot" : "live");
     setHighlights({});
     setSelectedNode(null);
-    uiLog(LogTags.workbench, "重置为实时投屏", "info");
-  }, []);
+    uiLog(LogTags.workbench, isIos ? "已返回快照视图" : "重置为实时投屏", "info");
+  }, [isIos]);
 
   const handleAction = useCallback(async (action) => {
+    // iOS 恒只读：除抓取快照外的动作在入口直接拦截，不发起注定 403 的请求
+    if (isIos && action.type !== "capture") {
+      toast("iOS 设备暂不支持操作指令", "warning");
+      return;
+    }
     switch (action.type) {
       case "capture":
         await capture();
@@ -336,7 +349,7 @@ export function WorkbenchPage() {
         }
       }
     }
-  }, [capture, deviceId, toast]);
+  }, [capture, deviceId, toast, isIos]);
 
   const selectNode = useCallback((nodeKey) => {
     setSelectedNode(nodeKey);
