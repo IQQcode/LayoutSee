@@ -46,7 +46,9 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   const pointerInfoAt = useRef(0);
   const deviceId = device?.deviceId;
   const snapshotView = viewMode === "snapshot" && snapshot?.data;
-  const liveActive = mediaMode === "live" && device?.status === "connected" && !snapshotView;
+  // 实时画面（scrcpy 流 / 截图轮询）只有 Android 链路具备：iOS 恒走快照 wireframe，双保险防误开流
+  const androidLive = device?.platform === "android";
+  const liveActive = mediaMode === "live" && androidLive && device?.status === "connected" && !snapshotView;
 
   // 媒体能力：决定 scrcpy 实时流或截图轮询
   useEffect(() => {
@@ -58,9 +60,10 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
     }).catch(() => {});
     api.mediaCapabilities(deviceId).then((payload) => {
       if (!active) return;
-      const mode = payload?.mode === "scrcpy" && payload?.live ? "live" : "screenshot";
+      // iOS 返回 mode="none"：既非实时流也非截图轮询，只走快照 wireframe
+      const mode = payload?.mode === "scrcpy" && payload?.live ? "live" : payload?.mode === "none" ? "none" : "screenshot";
       setMediaMode(mode);
-      uiLog(LogTags.media, `媒体模式：${mode === "live" ? "scrcpy 实时投屏" : "截图轮询"}`, "info", deviceId);
+      uiLog(LogTags.media, `媒体模式：${mode === "live" ? "scrcpy 实时投屏" : mode === "none" ? "无实时画面（快照模式）" : "截图轮询"}`, "info", deviceId);
     }).catch(() => {
       if (active) setMediaMode("screenshot");
     });
@@ -141,7 +144,8 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
         setFrameError(error);
       }
     };
-    if (!liveActive && !snapshotView && device?.status === "connected" && !frozen) {
+    // 截图轮询仅 Android：iOS 没有 screenshot 端点能力，轮询只会吃 403
+    if (androidLive && !liveActive && !snapshotView && device?.status === "connected" && !frozen) {
       tick();
       timer = setInterval(tick, intervalMs);
     }
@@ -149,7 +153,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
       active = false;
       clearInterval(timer);
     };
-  }, [liveActive, snapshotView, device?.deviceId, device?.status, intervalMs, frozen]);
+  }, [liveActive, snapshotView, device?.deviceId, device?.status, device?.platform, intervalMs, frozen]);
 
   useEffect(() => {
     viewerRef.current?.setFrozen(Boolean(frozen));
@@ -385,7 +389,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
           />
           {snapshotView && contentUrl ? <img className="device-pixel" src={contentUrl} alt="快照画面" draggable="false" /> : null}
           {showPollingFrame && frame ? <img className="device-pixel" src={frame} alt="" onLoad={(event) => setDims({ width: event.target.naturalWidth, height: event.target.naturalHeight })} draggable="false" /> : null}
-          {showPollingFrame && !frame && !frameError ? <span className="frame-placeholder">正在获取画面…</span> : null}
+          {showPollingFrame && !frame && !frameError ? <span className="frame-placeholder">{androidLive ? "正在获取画面…" : "暂无实时画面，抓取快照后查看布局"}</span> : null}
           {showPollingFrame && frameError ? <span className="frame-placeholder"><Info size={16} />画面获取失败，将自动重试</span> : null}
           {snapshot ? nodeOverlays() : null}
           <span className={`stream-badge ${labelTone}`}>
