@@ -17,12 +17,12 @@ import socket
 
 from ..errors import CoreError
 from . import archiver, peertalk
+from ._utils import as_int
 
 REQUEST_PING = 200
 REQUEST_APP = 201
 REQUEST_HIERARCHY = 202
 REQUEST_HIERARCHY_DETAILS = 203
-REQUEST_ALL_ATTR_GROUPS = 210
 
 SUPPORTED_SERVER_VERSION = 7
 PROBE_TIMEOUT = 0.5
@@ -40,9 +40,14 @@ class LookinClient:
         self.stream = stream
         self._tag = 0
 
-    def ping(self) -> int:
-        """握手：返回 lookinServerVersion（调用方语义上应已通过 _decode_response 校验 ==7）。"""
-        attach, _warnings = self._request(REQUEST_PING, timeout=PROBE_TIMEOUT)
+    def ping(self, warnings_out: list[str] | None = None) -> int:
+        """握手：返回 lookinServerVersion（调用方语义上应已通过 _decode_response 校验 ==7）。
+
+        解码 warnings 经 warnings_out 外送（None 则丢弃），供探测方并入诊断记录。
+        """
+        attach, warnings = self._request(REQUEST_PING, timeout=PROBE_TIMEOUT)
+        if warnings_out is not None:
+            warnings_out.extend(warnings)
         version = attach.get("lookinServerVersion")
         if not isinstance(version, int) or isinstance(version, bool):
             raise CoreError("LOOKIN_UNAVAILABLE", "Ping 响应缺少 lookinServerVersion。")
@@ -79,8 +84,8 @@ class LookinClient:
                 attach, batch_warnings = self._read_response(REQUEST_HIERARCHY_DETAILS, tag, REQUEST_TIMEOUT)
             warnings.extend(batch_warnings)
             batches.append(attach.get("0"))
-            batch_total = _as_int(attach.get("dataTotalCount"))
-            batch_current = _as_int(attach.get("currentDataCount"))
+            batch_total = as_int(attach.get("dataTotalCount"))
+            batch_current = as_int(attach.get("currentDataCount"))
             if batch_total is not None and batch_total > 0:
                 total = batch_total
             if batch_current is not None:
@@ -232,7 +237,7 @@ def _collect_attr_groups(value: object, out: dict[int, list[object]]) -> None:
             out.setdefault(oid, []).extend(groups)
             return  # 命中 oid 条目后不再下钻，避免重复归并
         for key, item in value.items():
-            oid = _as_int(key)
+            oid = as_int(key)
             if oid is not None and _looks_like_groups(item):
                 out.setdefault(oid, []).extend(_as_group_list(item))
             else:
@@ -243,7 +248,7 @@ def _collect_attr_groups(value: object, out: dict[int, list[object]]) -> None:
 
 
 def _oid_groups_of(value: dict[object, object]) -> tuple[int, list[object]] | None:
-    oid = _as_int(value.get("oid"))
+    oid = as_int(value.get("oid"))
     if oid is None:
         return None
     for key in value:
@@ -264,15 +269,3 @@ def _as_group_list(item: object) -> list[object]:
     return [item] if isinstance(item, dict) else []
 
 
-def _as_int(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if text.lstrip("+-").isdigit():
-            return int(text)
-    return None

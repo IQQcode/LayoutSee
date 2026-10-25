@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 from ..errors import CoreError
 from .archiver import decode_rect
 from .client import LookinClient
+from ._utils import as_int
 from .usbmux import UsbmuxClient
 
 # XML 属性提取规则表：XML 属性名 → 匹配规则（真机校准时只改这里）
@@ -65,6 +66,9 @@ def build_xml(
     display_items: list[object] = []
     if isinstance(data, dict) and isinstance(data.get("displayItems"), list):
         display_items = data["displayItems"]
+    elif data is not None:
+        # data 非 None 却没有 displayItems：真实键名待真机校准，记 warning 不报错
+        warnings.append(f"hierarchy 响应缺少 displayItems（键名需真机校准）：{type(data).__name__}")
     for index, item in enumerate(display_items):
         _build_node(root, item, index, scale, attr_groups_by_oid, warnings)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
@@ -111,22 +115,39 @@ class IOSDeviceDriver:
         """探测单端口：Connect → Ping → app_info，只放行前台 App（appIsInBackground is False）。
 
         命中时返回 (client, info, port) 并保持连接（调用方负责关闭）；否则记录 attempts 后
-        返回 None（连接已关闭）。供 capture 与诊断脚本复用。
+        返回 None（连接已关闭）。解码 warnings 随 info/attempts 外送，不丢弃。
+        供 capture 与诊断脚本复用。
         """
         stream = None
         keep = False
         try:
             stream = self.usbmux.connect(udid, port)
             client = LookinClient(stream)
-            client.ping()
+            ping_warnings: list[str] = []
+            client.ping(ping_warnings)
             info = client.app_info()
+            decode_warnings = ping_warnings + list(info.get("warnings") or [])
             if info.get("appIsInBackground") is not False:
-                attempts.append({"port": port, "stage": "filter", "appIsInBackground": info.get("appIsInBackground")})
+                attempts.append({
+                    "port": port,
+                    "stage": "filter",
+                    "appIsInBackground": info.get("appIsInBackground"),
+                    "warnings": decode_warnings,
+                })
                 return None
+            info["warnings"] = decode_warnings  # ping + app 解码警告随 info 交给调用方
             keep = True
             return client, info, port
         except CoreError as error:
             attempts.append({"port": port, "code": error.code, "message": error.message})
+            return None
+        except OSError as error:  # peertalk 收发阶段的裸 socket 错误，统一归类
+            wrapped = CoreError(
+                "LOOKIN_UNAVAILABLE",
+                f"与设备端口 {port} 通信失败：{error}",
+                details={"port": port, "reason": str(error)},
+            )
+            attempts.append({"port": port, "code": wrapped.code, "message": wrapped.message})
             return None
         finally:
             if stream is not None and not keep:
@@ -140,6 +161,13 @@ class IOSDeviceDriver:
 
         返回 {"xml", "window_size", "app", "warnings"}；无可用前台 App 抛 LOOKIN_APP_NOT_FOUND。
         """
+        return self._capture(udid, include_raw=False)
+
+    def capture_debug(self, udid: str) -> dict[str, object]:
+        """诊断用抓取：在 capture() 基础上附 raw（解码后的层级树与属性详情），供真机校准键名。"""
+        return self._capture(udid, include_raw=True)
+
+    def _capture(self, udid: str, *, include_raw: bool) -> dict[str, object]:
         attempts: list[dict[str, object]] = []
         selected: tuple[LookinClient, dict[str, object], int] | None = None
         try:
@@ -157,6 +185,7 @@ class IOSDeviceDriver:
                 details = client.hierarchy_details()
             except CoreError as error:
                 warnings.append(f"属性拉取失败，已降级为无属性树：{error.message}")
+            warnings.extend(info.get("warnings") or [])
             warnings.extend(hierarchy.get("warnings") or [])
             warnings.extend(details.get("warnings") or [])
             app = flatten_app_info(info)
@@ -164,7 +193,7 @@ class IOSDeviceDriver:
             scale = float(app.get("screenScale") or 1)
             attr_groups = details.get("attrGroupsByOid") if isinstance(details.get("attrGroupsByOid"), dict) else {}
             xml = build_xml(hierarchy.get("data"), scale, attr_groups, warnings)
-            return {
+            result: dict[str, object] = {
                 "xml": xml,
                 "window_size": {
                     "width": round_px(float(app.get("screenWidth") or 0) * scale),
@@ -173,6 +202,9 @@ class IOSDeviceDriver:
                 "app": app,
                 "warnings": warnings,
             }
+            if include_raw:
+                result["raw"] = {"hierarchy": hierarchy.get("data"), "details": details}
+            return result
         finally:
             if selected is not None:
                 try:
@@ -193,6 +225,13 @@ class IOSDeviceDriver:
             return CoreError(
                 "LOOKIN_VERSION_MISMATCH",
                 "LookinServer 版本不兼容（需要 7，对应 LookinServer 1.2.8），请升级被测 App 后重试。",
+                details={"udid": udid, "attempts": attempts},
+            )
+        if codes == {"LOOKIN_UNAVAILABLE"}:
+            return CoreError(
+                "LOOKIN_UNAVAILABLE",
+                "设备或 usbmuxd 通信失败，请确认 iOS 设备 USB 连接正常后重试。",
+                retryable=True,
                 details={"udid": udid, "attempts": attempts},
             )
         return CoreError(
@@ -259,7 +298,7 @@ def _flat_attrs(item: dict[str, object], attr_groups_by_oid: dict[int, list[obje
     for key in ("viewObject", "layerObject"):
         obj = item.get(key)
         if isinstance(obj, dict):
-            oid = _as_int(obj.get("oid"))
+            oid = as_int(obj.get("oid"))
             if oid is not None:
                 groups.extend(attr_groups_by_oid.get(oid) or [])
     flat: list[tuple[str, object]] = []
@@ -305,18 +344,6 @@ def _format_value(value: object) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)
-
-
-def _as_int(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str) and value.strip().lstrip("+-").isdigit():
-        return int(value)
-    return None
 
 
 def _as_float(value: object) -> float:

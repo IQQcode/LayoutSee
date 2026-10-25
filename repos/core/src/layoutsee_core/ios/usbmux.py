@@ -92,6 +92,7 @@ class UsbmuxClient:
         if self._socket_factory is not None:
             return self._socket_factory()
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)  # 连接与后续读写均受超时保护，防止悬空 socket 文件挂死
         try:
             sock.connect(self.socket_path)
         except OSError as error:

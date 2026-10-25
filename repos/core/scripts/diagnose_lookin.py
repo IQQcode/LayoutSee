@@ -1,5 +1,6 @@
 """Lookin 链路诊断脚本：枚举 usbmux 设备 / 端口扫描 / 完整抓取（真机冒烟的人工验证入口）。
 
+协议事实源：QMUI/LookinServer @develop (MIT)；不包含 hughkli/Lookin (GPL-3.0) 代码。
 对齐 scripts/diagnose_scrcpy.py 的纯脚本风格。用法（仓库根执行）：
 
     uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --list
@@ -19,7 +20,7 @@ from plistlib import UID
 sys.path.insert(0, "repos/core/src")
 from layoutsee_core.errors import CoreError
 from layoutsee_core.ios.client import LookinClient
-from layoutsee_core.ios.driver import IOSDeviceDriver, build_xml, flatten_app_info, round_px
+from layoutsee_core.ios.driver import IOSDeviceDriver
 from layoutsee_core.ios.usbmux import UsbmuxClient
 
 
@@ -46,6 +47,9 @@ def run_scan(usbmux_client: UsbmuxClient, udid: str) -> int:
         except CoreError as error:
             result[str(port)] = {"stage": "connect", "error": error.code, "message": error.message}
             continue
+        except OSError as error:  # 裸 socket 错误统一归类，不让脚本崩溃
+            result[str(port)] = {"stage": "connect", "error": "LOOKIN_UNAVAILABLE", "message": f"与设备端口 {port} 通信失败：{error}"}
+            continue
         lookin = LookinClient(stream)
         try:
             version = lookin.ping()
@@ -60,6 +64,8 @@ def run_scan(usbmux_client: UsbmuxClient, udid: str) -> int:
             found = True
         except CoreError as error:
             entry = {"stage": "request", "error": error.code, "message": error.message}
+        except OSError as error:
+            entry = {"stage": "request", "error": "LOOKIN_UNAVAILABLE", "message": f"与设备端口 {port} 通信失败：{error}"}
         finally:
             try:
                 stream.close()
@@ -82,61 +88,38 @@ def _json_default(value: object) -> object:
 
 
 def run_capture(usbmux_client: UsbmuxClient, udid: str, out_dir: Path) -> int:
+    """完整抓取：复用 IOSDeviceDriver.capture_debug（capture() 结果 + 解码后 raw 树）。"""
     ios_driver = IOSDeviceDriver(usbmux_client)
-    attempts: list[dict[str, object]] = []
-    selected: tuple[LookinClient, dict[str, object], int] | None = None
-    for port in ios_driver.USB_PORTS:
-        selected = ios_driver.probe_port(udid, port, attempts)
-        if selected is not None:
-            break
-    if selected is None:
-        print("未找到前台运行的 Lookin App（被测 App 需集成 LookinServer 且处于前台）。")
-        print(json.dumps(attempts, ensure_ascii=False, indent=2, default=_json_default))
-        return 1
-    lookin_client, info, port = selected
     try:
-        hierarchy = lookin.hierarchy()
-        warnings = list(hierarchy.get("warnings") or [])
-        details: dict[str, object] = {"attrGroupsByOid": {}, "batches": [], "droppedImageFieldCount": 0}
-        try:
-            details = lookin.hierarchy_details()
-        except CoreError as error:
-            warnings.append(f"属性拉取失败（已降级）：{error.message}")
-        warnings.extend(details.get("warnings") or [])
-        app = flatten_app_info(info)
-        app["port"] = port
-        scale = float(app.get("screenScale") or 1)
-        attr_groups = details.get("attrGroupsByOid") if isinstance(details.get("attrGroupsByOid"), dict) else {}
-        xml = build_xml(hierarchy.get("data"), scale, attr_groups, warnings)
-        window_size = {
-            "width": round_px(float(app.get("screenWidth") or 0) * scale),
-            "height": round_px(float(app.get("screenHeight") or 0) * scale),
-        }
+        capture = ios_driver.capture_debug(udid)
     except CoreError as error:
         print(f"抓取失败：[{error.code}] {error.message}")
+        attempts = error.details.get("attempts")
+        if attempts:
+            print(json.dumps(attempts, ensure_ascii=False, indent=2, default=_json_default))
         return 1
-    finally:
-        try:
-            lookin_client.stream.close()
-        except OSError:
-            pass
+    except OSError as error:
+        print(f"抓取失败：[LOOKIN_UNAVAILABLE] 与设备通信失败：{error}")
+        return 1
 
+    raw = capture.get("raw") if isinstance(capture.get("raw"), dict) else {}
+    window_size = capture.get("window_size") if isinstance(capture.get("window_size"), dict) else {}
+    warnings = list(capture.get("warnings") or [])
     out_dir.mkdir(parents=True, exist_ok=True)
     xml_path = out_dir / f"lookin-{udid}.xml"
     tree_path = out_dir / f"lookin-{udid}-tree.json"
-    xml_path.write_text(xml, encoding="utf-8")
+    xml_path.write_text(str(capture.get("xml")), encoding="utf-8")
     tree = {
-        "app": app,
-        "port": port,
-        "hierarchy": hierarchy.get("data"),
-        "details": details,
+        "app": capture.get("app"),
+        "windowSize": window_size,
+        "raw": raw,  # 解码后的层级树与属性详情原始结构，供真机校准键名
         "warnings": warnings,
     }
     tree_path.write_text(
         json.dumps(tree, ensure_ascii=False, indent=2, default=_json_default),
         encoding="utf-8",
     )
-    print(f"窗口尺寸：{window_size['width']}x{window_size['height']}")
+    print(f"窗口尺寸：{window_size.get('width')}x{window_size.get('height')}")
     print(f"XML：{xml_path}")
     print(f"树 JSON：{tree_path}")
     if warnings:

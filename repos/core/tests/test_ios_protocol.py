@@ -1,8 +1,9 @@
 """iOS 协议层单测：PeerTalk 帧 / usbmux plist / NSKeyedArchiver / LookinClient / IOSDeviceDriver。
 
+协议事实源：QMUI/LookinServer @develop (MIT)；不包含 hughkli/Lookin (GPL-3.0) 代码。
 全部使用本地替身（socketpair 假 usbmuxd、FakeStream 预录帧序列、手写 bplist 金样 fixture），
 不依赖真机与真实 usbmuxd。金样 fixture 由一次性脚本手工构造 keyed-archiver 图后
-用 plistlib 落盘（生成方式见 tests/fixtures/lookin/ 下文件与本测试断言）。
+用 plistlib 落盘（生成与复跑方式见 tests/fixtures/lookin/make_fixture.py）。
 """
 from __future__ import annotations
 
@@ -242,7 +243,9 @@ class UsbmuxTest(unittest.TestCase):
         self.assertEqual(usbmux.parse_result(usbmux.MESSAGE_RESULT, struct.pack("=I", 3)), 3)
 
     def test_swap_port_is_big_endian_u16(self) -> None:
-        self.assertEqual(usbmux.swap_port(47175), ((47175 & 0xFF) << 8) | (47175 >> 8))
+        # 47175=0xB847；((port & 0xFF) << 8) | (port >> 8) 字节交换后为 0x47B8（大端 u16 形态）
+        self.assertEqual(usbmux.swap_port(47175), 0x47B8)
+        self.assertEqual(usbmux.swap_port(0x00FF), 0xFF00)
         with self.assertRaises(ValueError):
             usbmux.swap_port(70000)
 
@@ -340,6 +343,23 @@ class ClientTest(unittest.TestCase):
         with self.assertRaises(CoreError) as context:
             client.LookinClient(TimeoutStream()).ping()
         self.assertEqual(context.exception.code, "OPERATION_TIMEOUT")
+
+    def test_response_frame_type_mismatch_raises_unavailable(self) -> None:
+        # 期望 200（Ping），服务端回 201（App）
+        stream = FakeStream(frame_bytes(201, 1, response_attachment(server_version=7)))
+        with self.assertRaises(CoreError) as context:
+            client.LookinClient(stream).ping()
+        self.assertEqual(context.exception.code, "LOOKIN_UNAVAILABLE")
+        self.assertEqual(context.exception.details["expectedType"], 200)
+        self.assertEqual(context.exception.details["actualType"], 201)
+
+    def test_response_frame_tag_mismatch_raises_unavailable(self) -> None:
+        # 服务端未回显请求 tag（回 9 而非 1）
+        stream = FakeStream(frame_bytes(200, 9, response_attachment(server_version=7)))
+        with self.assertRaises(CoreError) as context:
+            client.LookinClient(stream).ping()
+        self.assertEqual(context.exception.code, "LOOKIN_UNAVAILABLE")
+        self.assertEqual(context.exception.details["actualTag"], 9)
 
     def test_app_info_parses_screen_scale(self) -> None:
         payload = response_attachment(
