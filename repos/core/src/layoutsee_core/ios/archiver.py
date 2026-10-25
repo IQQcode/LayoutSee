@@ -102,12 +102,24 @@ class _Archiver:
 
 
 def encode_keyed_object(fields: dict[str, object], class_name: str, class_chain: list[str] | None = None) -> bytes:
-    """把 {键: 值} 编码为一个 keyed-archiver 类实例（encode_attachment 的通用底座）。"""
+    """把 {键: 值} 编码为一个 keyed-archiver 类实例（encode_attachment 的通用底座）。
+
+    标量（bool/int/float）按 Apple 的 encodeInteger/encodeBool/encodeDouble 行为**内联**写入实例
+    dict——若改成 $objects + UID 引用，Foundation 的 decodeIntegerForKey:/decodeBoolForKey: 会抛
+    "value for key" 异常（2026-10-25 真机验证：LookinServer 解码崩溃的根因）。其余类型仍走
+    $objects + UID 引用（encodeObject 行为）。
+    """
     archiver = _Archiver()
     chain = list(class_chain) if class_chain else [class_name, "NSObject"]
+    encoded_fields: dict[str, object] = {}
+    for key, value in fields.items():
+        if isinstance(value, (bool, int, float)):
+            encoded_fields[str(key)] = value
+        else:
+            encoded_fields[str(key)] = archiver.reference(value)
     root = archiver.new_object({
         "$class": archiver.class_ref(class_name, chain),
-        **{str(key): archiver.reference(value) for key, value in fields.items()},
+        **encoded_fields,
     })
     container = {
         "$version": ARCHIVER_VERSION,

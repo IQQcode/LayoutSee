@@ -11,6 +11,7 @@ import socket
 import struct
 import threading
 import unittest
+import plistlib
 from pathlib import Path
 
 from layoutsee_core.errors import CoreError
@@ -19,6 +20,7 @@ from layoutsee_core.snapshots import normalize_nodes
 
 UDID = "00008101-000A2C3E1F29002E"
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lookin" / "response_attachment_hierarchy.plist"
+FIXTURE_APPLE = Path(__file__).resolve().parent / "fixtures" / "lookin" / "apple_generated_attachment.bin"
 
 
 def frame_bytes(frame_type: int, tag: int, payload: bytes) -> bytes:
@@ -251,6 +253,24 @@ class UsbmuxTest(unittest.TestCase):
 
 
 class ArchiverTest(unittest.TestCase):
+    def test_encode_scalar_fields_are_inline_like_apple(self) -> None:
+        """Apple 的 encodeInteger/encodeBool 把标量内联进实例 dict；UID 引用形态会被 Foundation
+        的 decodeIntegerForKey: 拒绝（2026-10-25 真机 LookinServer 崩溃根因），必须防回归。"""
+        payload = archiver.encode_attachment(None, 0)
+        container = plistlib.loads(payload)
+        instance = container["$objects"][container["$top"]["root"].data]
+        self.assertIsInstance(instance["1"], int)  # 内联整数，而非 UID 引用
+        self.assertEqual(instance["1"], 0)
+        self.assertIsInstance(instance["0"], plistlib.UID)  # data=None 仍是 $null 引用
+
+    def test_decode_apple_generated_fixture(self) -> None:
+        """自研解码器必须能解 Apple NSKeyedArchiver 生成的样本（Swift 生成，结构同请求附件）。"""
+        root, warnings = archiver.unarchive(FIXTURE_APPLE.read_bytes())
+        self.assertEqual(warnings, [])
+        self.assertEqual(root["1"], 0)
+        self.assertIsNone(root["0"])
+        self.assertEqual(root["_classes"], ["gen_lookin.Att", "NSObject"])
+
     def test_encode_decode_roundtrip_nested(self) -> None:
         data = {"a": "中文文本", "b": 7, "c": b"\x00\x01\xfe", "d": None, "e": [1, "x", True], "f": {"g": 1.5}}
         root, warnings = archiver.unarchive(archiver.encode_attachment(data, data_type=0))
