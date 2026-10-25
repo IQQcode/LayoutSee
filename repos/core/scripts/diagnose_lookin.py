@@ -6,6 +6,8 @@
     uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --list
     uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --scan --udid <udid>
     uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --capture --udid <udid> [--out DIR]
+    uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --scan --sim        # 模拟器
+    uv run --project repos/core python repos/core/scripts/diagnose_lookin.py --capture --sim [--out DIR]
 
 退出码：--list 恒为 0（无 usbmuxd/无设备打印中文提示）；--scan/--capture 无设备或失败为 1。
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import sys
 from pathlib import Path
 from plistlib import UID
@@ -87,7 +90,68 @@ def _json_default(value: object) -> object:
     return str(value)
 
 
-def run_capture(usbmux_client: UsbmuxClient, udid: str, out_dir: Path) -> int:
+def run_scan_sim() -> int:
+    """扫描本机 loopback 模拟器端口（47164-47169）：连接被拒的端口记为 closed，降低噪音。"""
+    driver = IOSDeviceDriver()
+    result: dict[str, object] = {}
+    found = False
+    for port in driver.SIM_PORTS:
+        stream = None
+        try:
+            stream = socket.create_connection(("127.0.0.1", port), timeout=1.0)
+        except OSError:
+            result[str(port)] = {"stage": "connect", "closed": True}
+            continue
+        try:
+            lookin = LookinClient(stream)
+            version = lookin.ping()
+            info = lookin.app_info()
+            data = info.get("data") if isinstance(info.get("data"), dict) else {}
+            foreground = info.get("appIsInBackground") is False
+            found = found or foreground
+            result[str(port)] = {
+                "bundleId": data.get("appBundleIdentifier") or "",
+                "appName": data.get("appName") or "",
+                "background": info.get("appIsInBackground"),
+                "serverVersion": version,
+            }
+        except CoreError as error:
+            result[str(port)] = {"stage": "request", "error": error.code, "message": error.message}
+        except OSError as error:
+            result[str(port)] = {"stage": "request", "error": "LOOKIN_UNAVAILABLE", "message": str(error)}
+        finally:
+            try:
+                stream.close()
+            except OSError:
+                pass
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if not found:
+        print("模拟器扫描完成：未发现可连接的 Lookin App（确认模拟器内 App 正在前台运行，且已退出 Lookin 官方客户端）。")
+        return 1
+    return 0
+
+
+def run_capture_sim(out_dir: Path) -> int:
+    """模拟器抓取：先扫描端口选前台 App，再复用 capture_debug。"""
+    driver = IOSDeviceDriver()
+    serial: str | None = None
+    for port in driver.SIM_PORTS:
+        probe: list[dict[str, object]] = []
+        selected = driver.probe_port(driver.SIMULATOR_SERIAL_PREFIX + str(port), port, probe)
+        if selected is not None:
+            try:
+                selected[0].stream.close()
+            except OSError:
+                pass
+            serial = driver.SIMULATOR_SERIAL_PREFIX + str(port)
+            break
+    if serial is None:
+        print("模拟器抓取失败：未找到可连接的前台 Lookin App（App 未运行 / 未集成 / Lookin 官方客户端占用中）。")
+        return 1
+    return run_capture(None, serial, out_dir)  # 模拟器路径不经过 usbmux，传 None
+
+
+def run_capture(usbmux_client: UsbmuxClient | None, udid: str, out_dir: Path) -> int:
     """完整抓取：复用 IOSDeviceDriver.capture_debug（capture() 结果 + 解码后 raw 树）。"""
     ios_driver = IOSDeviceDriver(usbmux_client)
     try:
@@ -135,9 +199,18 @@ def main() -> int:
     group.add_argument("--list", action="store_true", help="列出 usbmux 设备（udid、DeviceID）")
     group.add_argument("--scan", action="store_true", help="扫描 47175-47179 端口的 Lookin App，输出 JSON")
     group.add_argument("--capture", action="store_true", help="完整抓取，输出 XML 与解码后的树 JSON")
-    parser.add_argument("--udid", help="设备 UDID（--scan/--capture 必填）")
+    parser.add_argument("--sim", action="store_true", help="针对模拟器（本机 loopback 47164-47169）执行 --scan/--capture")
+    parser.add_argument("--udid", help="设备 UDID（真机 --scan/--capture 必填）")
     parser.add_argument("--out", default=".", help="输出目录（--capture 用，默认当前目录）")
     args = parser.parse_args()
+
+    if args.sim:
+        if args.scan:
+            return run_scan_sim()
+        if args.capture:
+            return run_capture_sim(Path(args.out))
+        print("--sim 需要与 --scan 或 --capture 搭配使用。")
+        return 1
 
     usbmux_client = UsbmuxClient()
     if args.list:

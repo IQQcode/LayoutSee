@@ -1,15 +1,17 @@
 """IOSDeviceDriver：iOS 设备驱动，对上暴露与 AdbClient 同风格的接口。
 
 协议事实源：QMUI/LookinServer @develop (MIT)；不包含 hughkli/Lookin (GPL-3.0) 代码。
-- 端口：真机 USB 47175-47179（LookinServer 默认监听；模拟器 47164-47169 本版不做）
-- 抓取流程：逐端口 usbmux Connect（失败继续下一端口）→ Ping(0.5s) → 版本校验 → app_info(0.5s)
+- 端口：真机 USB 47175-47179（usbmuxd 隧道）；模拟器 47164-47169（与主机共享 loopback，直连）
+- 抓取流程：逐端口连接（失败继续下一端口）→ Ping(0.5s) → 版本校验 → app_info(0.5s)
   → 只接受 appIsInBackground=False 的前台 App（iOS 前台唯一，结果确定）
   → hierarchy(5s) + hierarchy_details(5s，失败降级：树照出、attrGroups 空、warnings 注明)
   → 生成 uiautomator 风格 XML（bounds = frame × screenScale 四舍五入取整、负值截 0）
 - XML 属性提取规则集中在 ATTR_EXTRACTION_RULES，真机校准时只改这一处
+- 模拟器约束：LookinServer 单客户端——同一时刻 Lookin 官方客户端连着时端口不可达（枚举不到属正常）
 """
 from __future__ import annotations
 
+import socket
 import time
 import xml.etree.ElementTree as ET
 
@@ -75,44 +77,95 @@ def build_xml(
 
 
 class IOSDeviceDriver:
-    """iOS 设备驱动：devices() 枚举、capture() 抓取（Task 2 接入 registry/capture）。"""
+    """iOS 设备驱动：devices() 枚举（真机 usbmux + 模拟器 loopback）、capture() 抓取。"""
 
     USB_PORTS = range(47175, 47180)
+    SIM_PORTS = range(47164, 47170)
+    SIMULATOR_SERIAL_PREFIX = "simulator:"
+    SIM_CONNECT_TIMEOUT_S = 0.5
 
-    def __init__(self, usbmux: UsbmuxClient | None = None) -> None:
+    def __init__(self, usbmux: UsbmuxClient | None = None, sim_ports: range | tuple[int, ...] | None = None) -> None:
         self.usbmux = usbmux or UsbmuxClient()
+        self.sim_ports = tuple(sim_ports) if sim_ports is not None else tuple(self.SIM_PORTS)
 
     def available(self) -> bool:
+        """usbmuxd 可用性（真机枚举前提）；模拟器枚举不依赖 usbmuxd。"""
         return self.usbmux.available()
 
     def devices(self) -> list[dict[str, object]]:
-        if not self.available():
-            return []
         now = int(time.time() * 1000)
         devices: list[dict[str, object]] = []
-        for entry in self.usbmux.list_devices():
-            udid = str(entry["udid"])
-            properties = entry.get("properties") if isinstance(entry.get("properties"), dict) else {}
-            devices.append({
-                "deviceId": f"ios-{udid}",
-                "platform": "ios",
-                "serial": udid,
-                "model": "",
-                "product": str(properties.get("ProductType") or ""),
-                "status": "connected",
-                "capabilities": ["layout"],
-                "readonly": True,
-                "lastSeenAt": now,
-            })
+        if self.available():
+            for entry in self.usbmux.list_devices():
+                udid = str(entry["udid"])
+                properties = entry.get("properties") if isinstance(entry.get("properties"), dict) else {}
+                devices.append({
+                    "deviceId": f"ios-{udid}",
+                    "platform": "ios",
+                    "serial": udid,
+                    "model": "",
+                    "product": str(properties.get("ProductType") or ""),
+                    "status": "connected",
+                    "capabilities": ["layout"],
+                    "readonly": True,
+                    "lastSeenAt": now,
+                })
+        devices.extend(self._simulator_devices(now))
         return devices
+
+    def _simulator_devices(self, now: int) -> list[dict[str, object]]:
+        """扫本机 loopback 模拟器端口：连接+ping+app_info 全部通过且前台才算一台设备。
+
+        连接被拒 = 该端口无 App 监听（未运行/未集成/Lookin 官方客户端占用中），静默跳过。
+        """
+        result: list[dict[str, object]] = []
+        for port in self.sim_ports:
+            stream = None
+            try:
+                stream = socket.create_connection(("127.0.0.1", port), timeout=self.SIM_CONNECT_TIMEOUT_S)
+                client = LookinClient(stream)
+                client.ping()
+                info = client.app_info()
+                if info.get("appIsInBackground") is not False:
+                    continue
+                app = flatten_app_info(info)
+                result.append({
+                    "deviceId": f"ios-sim-{port}",
+                    "platform": "ios",
+                    "serial": f"{self.SIMULATOR_SERIAL_PREFIX}{port}",
+                    "model": str(app.get("appName") or ""),
+                    "product": str(app.get("deviceDescription") or "Simulator"),
+                    "status": "connected",
+                    "capabilities": ["layout"],
+                    "readonly": True,
+                    "lastSeenAt": now,
+                })
+            except (CoreError, OSError):
+                continue
+            finally:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
+        return result
+
+    def _open_stream(self, serial: str, port: int):
+        """按设备类型建立到 LookinServer 的裸流：模拟器直连 loopback，真机走 usbmuxd 隧道。"""
+        if serial.startswith(self.SIMULATOR_SERIAL_PREFIX):
+            return socket.create_connection(("127.0.0.1", port), timeout=self.SIM_CONNECT_TIMEOUT_S)
+        return self.usbmux.connect(serial, port)
+
+    def is_simulator(self, serial: str) -> bool:
+        return serial.startswith(self.SIMULATOR_SERIAL_PREFIX)
 
     def probe_port(
         self,
-        udid: str,
+        serial: str,
         port: int,
         attempts: list[dict[str, object]],
     ) -> tuple[LookinClient, dict[str, object], int] | None:
-        """探测单端口：Connect → Ping → app_info，只放行前台 App（appIsInBackground is False）。
+        """探测单端口：连接 → Ping → app_info，只放行前台 App（appIsInBackground is False）。
 
         命中时返回 (client, info, port) 并保持连接（调用方负责关闭）；否则记录 attempts 后
         返回 None（连接已关闭）。解码 warnings 随 info/attempts 外送，不丢弃。
@@ -121,7 +174,7 @@ class IOSDeviceDriver:
         stream = None
         keep = False
         try:
-            stream = self.usbmux.connect(udid, port)
+            stream = self._open_stream(serial, port)
             client = LookinClient(stream)
             ping_warnings: list[str] = []
             client.ping(ping_warnings)
@@ -156,27 +209,34 @@ class IOSDeviceDriver:
                 except OSError:
                     pass
 
-    def capture(self, udid: str) -> dict[str, object]:
+    def capture(self, serial: str) -> dict[str, object]:
         """完整抓取：端口扫描选前台 App → 层级 + 属性 → uiautomator XML。
 
-        返回 {"xml", "window_size", "app", "warnings"}；无可用前台 App 抛 LOOKIN_APP_NOT_FOUND。
+        serial 为真机 UDID 或 `simulator:{port}`；返回 {"xml", "window_size", "app", "warnings"}，
+        无可用前台 App 抛 LOOKIN_APP_NOT_FOUND。
         """
-        return self._capture(udid, include_raw=False)
+        return self._capture(serial, include_raw=False)
 
-    def capture_debug(self, udid: str) -> dict[str, object]:
+    def capture_debug(self, serial: str) -> dict[str, object]:
         """诊断用抓取：在 capture() 基础上附 raw（解码后的层级树与属性详情），供真机校准键名。"""
-        return self._capture(udid, include_raw=True)
+        return self._capture(serial, include_raw=True)
 
-    def _capture(self, udid: str, *, include_raw: bool) -> dict[str, object]:
+    def _capture(self, serial: str, *, include_raw: bool) -> dict[str, object]:
         attempts: list[dict[str, object]] = []
         selected: tuple[LookinClient, dict[str, object], int] | None = None
         try:
-            for port in self.USB_PORTS:
-                selected = self.probe_port(udid, port, attempts)
-                if selected is not None:
-                    break
+            if self.is_simulator(serial):
+                # 模拟器 serial 自带端口（simulator:47164），只探测该端口
+                port = as_int(serial.split(":", 1)[1])
+                if port is not None:
+                    selected = self.probe_port(serial, port, attempts)
+            else:
+                for port in self.USB_PORTS:
+                    selected = self.probe_port(serial, port, attempts)
+                    if selected is not None:
+                        break
             if selected is None:
-                raise self._selection_error(udid, attempts)
+                raise self._selection_error(serial, attempts)
             client, info, port = selected
             warnings: list[str] = []
             hierarchy = client.hierarchy()  # hierarchy 失败则整体失败
@@ -212,33 +272,41 @@ class IOSDeviceDriver:
                 except OSError:
                     pass
 
-    @staticmethod
-    def _selection_error(udid: str, attempts: list[dict[str, object]]) -> CoreError:
+    def _selection_error(self, serial: str, attempts: list[dict[str, object]]) -> CoreError:
         codes = {str(item["code"]) for item in attempts if "code" in item}
         if codes == {"IOS_DEVICE_NOT_FOUND"}:
             return CoreError(
                 "IOS_DEVICE_NOT_FOUND",
-                f"usbmuxd 中未找到设备：{udid}。",
-                details={"udid": udid, "attempts": attempts},
+                f"usbmuxd 中未找到设备：{serial}。",
+                details={"udid": serial, "attempts": attempts},
             )
         if codes == {"LOOKIN_VERSION_MISMATCH"}:
             return CoreError(
                 "LOOKIN_VERSION_MISMATCH",
                 "LookinServer 版本不兼容（需要 7，对应 LookinServer 1.2.8），请升级被测 App 后重试。",
-                details={"udid": udid, "attempts": attempts},
+                details={"udid": serial, "attempts": attempts},
+            )
+        if self.is_simulator(serial):
+            # 模拟器失败绝大多数是连接拒绝（App 未运行 / 未集成 / Lookin 官方客户端占用），文案区分开
+            return CoreError(
+                "LOOKIN_APP_NOT_FOUND",
+                "模拟器上未找到可连接的 Lookin App：请确认模拟器中的被测 App 正在前台运行（Debug 构建集成 LookinServer）"
+                "；若正开着 Lookin 官方客户端，请先退出（LookinServer 同一时刻只允许一个客户端连接）。",
+                retryable=True,
+                details={"udid": serial, "attempts": attempts},
             )
         if codes == {"LOOKIN_UNAVAILABLE"}:
             return CoreError(
                 "LOOKIN_UNAVAILABLE",
                 "设备或 usbmuxd 通信失败，请确认 iOS 设备 USB 连接正常后重试。",
                 retryable=True,
-                details={"udid": udid, "attempts": attempts},
+                details={"udid": serial, "attempts": attempts},
             )
         return CoreError(
             "LOOKIN_APP_NOT_FOUND",
             "未找到前台运行的 Lookin App：请确认被测 App 已集成 LookinServer（Debug 构建）并处于前台。",
             retryable=True,
-            details={"udid": udid, "attempts": attempts},
+            details={"udid": serial, "attempts": attempts},
         )
 
 

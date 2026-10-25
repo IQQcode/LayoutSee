@@ -42,8 +42,8 @@ def response_attachment(
         fields["dataTotalCount"] = total
     if current is not None:
         fields["currentDataCount"] = current
-    if background is not None:
-        fields["appIsInBackground"] = background
+    # 真实 LookinServer 的 encodeWithCoder 无条件写 appIsInBackground（init 默认 NO），这里对齐
+    fields["appIsInBackground"] = bool(background) if background is not None else False
     return archiver.encode_keyed_object(
         fields,
         class_name="LookinConnectionResponseAttachment",
@@ -441,14 +441,15 @@ def groups_by_oid() -> dict[int, list[object]]:
 
 
 class StubUsbmux:
-    """usbmux 替身：connect 按序弹出预置流。"""
+    """usbmux 替身：connect 按序弹出预置流；up=False 模拟 usbmuxd 不可用。"""
 
-    def __init__(self, streams: list[FakeStream] | None = None, devices: list[dict[str, object]] | None = None) -> None:
+    def __init__(self, streams: list[FakeStream] | None = None, devices: list[dict[str, object]] | None = None, up: bool = True) -> None:
         self.streams = list(streams or [])
         self.devices = devices or []
+        self.up = up
 
     def available(self) -> bool:
-        return True
+        return self.up
 
     def list_devices(self) -> list[dict[str, object]]:
         return self.devices
@@ -459,10 +460,44 @@ class StubUsbmux:
         return self.streams.pop(0)
 
 
+class ReplayServer:
+    """模拟器替身：本地 TCP listener，accept 后按序推送预置帧；client 关闭连接后线程退出。"""
+
+    def __init__(self, frames: bytes) -> None:
+        self.listener = socket.socket()
+        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.listener.settimeout(5)
+        self.port = self.listener.getsockname()[1]
+        self.frames = frames
+        threading.Thread(target=self._serve, name="replay-lookin-sim", daemon=True).start()
+
+    def _serve(self) -> None:
+        try:
+            conn, _ = self.listener.accept()
+            conn.sendall(self.frames)
+            try:
+                # 持续丢弃 client 的请求帧，直到 client 关闭（连接保持，模拟 LookinServer 行为）
+                while conn.recv(65536):
+                    pass
+            except OSError:
+                pass
+            try:
+                conn.close()
+            except OSError:
+                pass
+        except OSError:
+            pass
+
+    def close(self) -> None:
+        self.listener.close()
+
+
 class DriverTest(unittest.TestCase):
     def test_devices_descriptor(self) -> None:
         stub = StubUsbmux(devices=[{"udid": UDID, "deviceId": 7, "properties": {"ProductType": "iPhone16,1"}}])
-        devices = driver.IOSDeviceDriver(stub).devices()
+        devices = driver.IOSDeviceDriver(stub, sim_ports=()).devices()
         self.assertEqual(len(devices), 1)
         item = devices[0]
         self.assertEqual(item["deviceId"], f"ios-{UDID}")
@@ -545,6 +580,88 @@ class DriverTest(unittest.TestCase):
         self.assertGreaterEqual(len(nodes), 2)
         self.assertEqual(nodes[1]["text"], "你好")
         self.assertEqual(nodes[1]["resourceId"], "titleLabel")
+
+
+def sim_app_info() -> dict[str, object]:
+    """模拟器 app_info 响应的 data 字段（前台 PackSmart）。"""
+    return {
+        "appName": "PackSmart",
+        "appBundleIdentifier": "com.demo.packsmart",
+        "deviceDescription": "iPhone 18 Pro",
+        "screenWidth": 390.0,
+        "screenHeight": 844.0,
+        "screenScale": 3.0,
+    }
+
+
+class SimulatorDriverTest(unittest.TestCase):
+    """模拟器路径：loopback 直连枚举与抓取（ReplayServer 替身，不依赖真实模拟器）。"""
+
+    def test_simulator_enumerated(self) -> None:
+        frames = frame_bytes(200, 1, response_attachment(server_version=7)) + frame_bytes(
+            201, 2, response_attachment(data=sim_app_info())
+        )
+        server = ReplayServer(frames)
+        try:
+            devices = driver.IOSDeviceDriver(StubUsbmux(), sim_ports=(server.port,)).devices()
+        finally:
+            server.close()
+        self.assertEqual(len(devices), 1)
+        item = devices[0]
+        self.assertEqual(item["deviceId"], f"ios-sim-{server.port}")
+        self.assertEqual(item["serial"], f"simulator:{server.port}")
+        self.assertEqual(item["model"], "PackSmart")
+        self.assertEqual(item["product"], "iPhone 18 Pro")
+        self.assertEqual(item["platform"], "ios")
+        self.assertIs(item["readonly"], True)
+
+    def test_simulator_enumerated_without_usbmux(self) -> None:
+        frames = frame_bytes(200, 1, response_attachment(server_version=7)) + frame_bytes(
+            201, 2, response_attachment(data=sim_app_info())
+        )
+        server = ReplayServer(frames)
+        try:
+            devices = driver.IOSDeviceDriver(StubUsbmux(up=False), sim_ports=(server.port,)).devices()
+        finally:
+            server.close()
+        self.assertEqual([item["serial"] for item in devices], [f"simulator:{server.port}"])
+
+    def test_simulator_background_app_filtered(self) -> None:
+        frames = frame_bytes(200, 1, response_attachment(server_version=7)) + frame_bytes(
+            201, 2, response_attachment(data=sim_app_info(), background=True)
+        )
+        server = ReplayServer(frames)
+        try:
+            devices = driver.IOSDeviceDriver(StubUsbmux(), sim_ports=(server.port,)).devices()
+        finally:
+            server.close()
+        self.assertEqual(devices, [])
+
+    def test_simulator_capture_pipeline(self) -> None:
+        frames = (
+            frame_bytes(200, 1, response_attachment(server_version=7))
+            + frame_bytes(201, 2, response_attachment(data=sim_app_info()))
+            + frame_bytes(202, 3, response_attachment(data={"displayItems": [make_window()]}))
+            + frame_bytes(203, 4, response_attachment(data=groups_by_oid(), total=1, current=1))
+        )
+        server = ReplayServer(frames)
+        try:
+            result = driver.IOSDeviceDriver(StubUsbmux(), sim_ports=(server.port,)).capture(f"simulator:{server.port}")
+        finally:
+            server.close()
+        self.assertEqual(result["window_size"], {"width": 1170, "height": 2532})
+        self.assertEqual(result["app"]["appName"], "PackSmart")
+        nodes, _, _ = normalize_nodes(result["xml"], {"width": 1170, "height": 2532})
+        self.assertEqual([node["className"] for node in nodes], ["UIWindow", "UILabel"])
+        self.assertEqual(nodes[1]["text"], "你好")
+
+    def test_simulator_capture_error_mentions_simulator(self) -> None:
+        # 端口 1 无监听：连接拒绝 → 模拟器专属文案（提示 Lookin 客户端独占），而非 usbmuxd 文案
+        ios_driver = driver.IOSDeviceDriver(StubUsbmux(), sim_ports=())
+        with self.assertRaises(CoreError) as ctx:
+            ios_driver.capture("simulator:1")
+        self.assertEqual(ctx.exception.code, "LOOKIN_APP_NOT_FOUND")
+        self.assertIn("模拟器", ctx.exception.message)
 
 
 if __name__ == "__main__":
