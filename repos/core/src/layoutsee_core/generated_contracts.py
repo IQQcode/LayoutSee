@@ -1,5 +1,5 @@
 # 此文件由 contracts:generate 自动生成，禁止手改。
-# schema sha256: 8be3449bda9e4531d63d8592b214f2f82613123444b9663b1b15950b4f15ed51
+# schema sha256: 99f1acd02aa193248a05cdd5fa4b4b853ba876b80caf2c905f79212a1fc1b4d3
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class CoreInfo(BaseModel):
 class Device(BaseModel):
     model_config = ConfigDict(extra="forbid")
     deviceId: str
-    platform: Literal["android"]
+    platform: Literal["android", "ios"]
     serial: str
     model: Optional[str] = None
     product: Optional[str] = None
