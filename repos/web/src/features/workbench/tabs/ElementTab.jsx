@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, ArrowsCounterClockwise, CaretDown, CaretRight, Code, DownloadSimple, MagnifyingGlass, Copy } from "@phosphor-icons/react";
 import { api } from "../../../api/client.js";
 import { HostBridge } from "../../../app/HostBridge.js";
 import { LogTags, uiLog, uiLogApi } from "../../../api/logger.js";
 import { Banner, Button, CopyButton, EmptyState, Spinner } from "../../../components/ui.jsx";
 import { ResizeHandle, clamp } from "../../../components/ResizeHandle.jsx";
+import { attrLabel, formatAttrValue, groupLabel, isCustomClass, sectionLabel } from "./attrFormat.js";
 
 function serializeNode(node, nodes) {
   const children = nodes.filter((item) => item.parentKey === node.nodeKey);
@@ -248,7 +249,8 @@ export function ElementTab({ device, deviceId, snapshotMeta, snapshotData, captu
           </span>
           <code className="xml-line">
             <span className="tok-punct">&lt;</span>
-            <span className="tok-tag">{node.className}</span>
+            <span className={`tok-tag ${isCustomClass(node.className) ? "tok-custom" : ""}`}>{node.className}</span>
+            {node.extras?.ivar ? <span className="tok-ivar"> {node.extras.ivar}</span> : null}
             {node.resourceId ? (
               <><span className="tok-attr"> resource-id</span><span className="tok-punct">=</span><span className="tok-value">"{node.resourceId}"</span></>
             ) : null}
@@ -313,20 +315,35 @@ export function ElementTab({ device, deviceId, snapshotMeta, snapshotData, captu
     }
   };
 
-  // 属性顺序：resource-id 置顶（无值不占行），其后 nodeKey/className/bounds 与其余原始属性
-  const properties = (() => {
+  // 属性面板：iOS 节点带 extras（属性分组/ivar）时按分组渲染；Android 与无 extras 维持原平铺
+  const selectedExtras = selected?.extras ?? null;
+  const extrasGroups = Array.isArray(selectedExtras?.groups) ? selectedExtras.groups : [];
+  const showExtras = Boolean(selectedExtras?.ivar) || extrasGroups.length > 0;
+  const baseProperties = (() => {
     if (!selected) return [];
     const rows = [];
     if (selected.raw?.["resource-id"]) rows.push(["resource-id", selected.raw["resource-id"]]);
     rows.push(["nodeKey", selected.nodeKey]);
     rows.push(["className", selected.className]);
+    if (selectedExtras?.ivar) rows.push(["ivar", selectedExtras.ivar]);
     rows.push(["bounds", `[${selected.boundsPx.left},${selected.boundsPx.top}][${selected.boundsPx.right},${selected.boundsPx.bottom}]`]);
-    for (const [key, value] of Object.entries(selected.raw || {})) {
-      if (key === "resource-id" || key === "bounds") continue;
-      rows.push([key, value]);
-    }
     return rows;
   })();
+  const rawProperties = (() => {
+    if (!selected) return [];
+    return Object.entries(selected.raw || {}).filter(([key]) => key !== "resource-id" && key !== "bounds");
+  })();
+  // 属性顺序：resource-id 置顶（无值不占行），其后 nodeKey/className/bounds 与其余原始属性
+  const properties = (() => {
+    if (!selected) return [];
+    const rows = [...baseProperties];
+    for (const [key, value] of rawProperties) rows.push([key, value]);
+    return rows;
+  })();
+  const extrasRowCount = useMemo(
+    () => extrasGroups.reduce((total, group) => total + (group.sections ?? []).reduce((sum, section) => sum + (section.attributes ?? []).length, 0), 0),
+    [extrasGroups],
+  );
 
   return (
     <div className="element-panel" style={{ display: "flex", flexDirection: "column", height: "100%", padding: 14 }}>
@@ -415,16 +432,55 @@ export function ElementTab({ device, deviceId, snapshotMeta, snapshotData, captu
           <section className="property-pane" aria-label="节点属性">
             <div className="inspector-head">
               <strong>属性</strong>
-              <span>{properties.length} 项</span>
+              <span>{showExtras ? `${baseProperties.length + extrasRowCount} 项` : `${properties.length} 项`}</span>
             </div>
             {selected ? (
               <>
                 <div className="property-list">
-                  {properties.map(([key, value]) => (
-                    <div className="property-row" key={key}>
-                      <span>{key}</span><code>{String(value ?? "—")}</code><CopyButton value={String(value ?? "")} />
-                    </div>
-                  ))}
+                  {showExtras ? (
+                    <>
+                      {baseProperties.map(([key, value]) => (
+                        <div className="property-row" key={key}>
+                          <span>{key}</span><code>{String(value ?? "—")}</code><CopyButton value={String(value ?? "")} />
+                        </div>
+                      ))}
+                      {extrasGroups.map((group) => (
+                        <Fragment key={group.identifier}>
+                          {(group.sections ?? []).map((section) => (
+                            <Fragment key={section.identifier}>
+                              <div className="attr-section-head">{groupLabel(group.identifier)} · {sectionLabel(section.identifier)}</div>
+                              {(section.attributes ?? []).map((attr) => {
+                                const { text, swatch } = formatAttrValue(attr.value);
+                                return (
+                                  <div className="property-row attr-row" key={attr.identifier}>
+                                    <span title={attr.identifier}>{attrLabel(attr.identifier)}</span>
+                                    <code>{swatch ? <i className="attr-swatch" style={{ background: swatch }} aria-hidden="true" /> : null}{text || "—"}</code>
+                                    <CopyButton value={text} />
+                                  </div>
+                                );
+                              })}
+                            </Fragment>
+                          ))}
+                        </Fragment>
+                      ))}
+                      {rawProperties.length ? (
+                        <details className="raw-attrs">
+                          <summary>原始 XML 属性（{rawProperties.length}）</summary>
+                          {rawProperties.map(([key, value]) => (
+                            <div className="property-row" key={key}>
+                              <span>{key}</span><code>{String(value ?? "—")}</code><CopyButton value={String(value ?? "")} />
+                            </div>
+                          ))}
+                        </details>
+                      ) : null}
+                    </>
+                  ) : (
+                    properties.map(([key, value]) => (
+                      <div className="property-row" key={key}>
+                        <span>{key}</span><code>{String(value ?? "—")}</code><CopyButton value={String(value ?? "")} />
+                      </div>
+                    ))
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6, padding: "8px 10px", borderTop: "1px solid var(--ls-color-border-default)", flexWrap: "wrap" }}>
                   <Button compact onClick={copyXml}>复制 XML</Button>

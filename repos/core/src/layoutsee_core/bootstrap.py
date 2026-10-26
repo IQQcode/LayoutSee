@@ -11,6 +11,7 @@ from .audit import ActionLog
 from .contracts import CoreInfo
 from .devices import DeviceGate, DeviceRegistry
 from .ios import IOSDeviceDriver, UsbmuxClient
+from .ios.simctl import SimctlClient
 from .logcat import LogcatHub
 from .media import MediaHub
 from .mcp_catalog import ToolDispatcher
@@ -57,7 +58,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
     ios = IOSDeviceDriver(usbmux)
     registry = DeviceRegistry(adb, settings, audit, gate, ios=ios)
     store = SnapshotStore(secret=secrets.token_bytes(32))
-    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios)
+    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios, simctl=SimctlClient())
     plugins = PluginRegistry(data_dir / "plugins", builtin_dir=builtin_plugins_dir(), product_version=PRODUCT_VERSION)
     dispatcher = ToolDispatcher(adb=adb, registry=registry, store=store, gate=gate, capture=capture, audit=audit, plugins=plugins)
     media = MediaHub(adb)

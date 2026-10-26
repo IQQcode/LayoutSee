@@ -2,7 +2,7 @@
 
 快速定位各工程模块。行数后的说明为模块当前职责；改代码前先看本索引与对应 `source/<repo>/{overview,setup,test}.md`。
 
-最后更新：2026-09-18。行数会漂移，职责说明以代码为准。
+最后更新：2026-10-27。行数会漂移，职责说明以代码为准。
 
 模块一览：`repos/core`（Python Core）、`repos/web`（React 前端）、`repos/mac`（Electron 壳）、`repos/contracts`（契约事实源）、`repos/plugins`（随包插件包）。
 
@@ -20,6 +20,7 @@
 | `media.py` | 390 | scrcpy 实时投屏：ScrcpySession + MediaHub | ADB wire 协议（socket 直连 5037，无子进程——Mimosa hook 约束）；推 jar → `shell:` 服务拉 server → `localabstract:scrcpy` 隧道；帧格式 `[pts u64][len u32][payload]`，pts bit63=config；`i-frame-interval=2` 短 GOP；订阅队列 30 帧丢旧保实时；`reap_idle` 回收无观众会话 |
 | `snapshots.py` | 320 | 原子抓取：CaptureCoordinator + SnapshotStore + normalize_nodes | dump XML → 截图 → 前后上下文比对（context_changed）；节点上限 3000/深度 128；store 每设备留 3 份、TTL 600s；ref 令牌 = HMAC(snapshotId) 前 10 hex |
 | `adb.py` | 300 | AdbClient：全部 adb 交互唯一入口 | `run()` argv 列表 + shell=False；`find_adb` 候选路径探测（MacPorts/Homebrew/SDK）；`window_size/density/orientation/current_app/apps/screenshot/dump_xml/action`；`logcat_dump`（`-d -v threadtime -t N`）与 `logcat_clear`（部分机型清空成功仍返回非 0，不据此报错）；`apps(serial, query, include_system)` 用两次 `pm list packages` 对比标记 `system`；`clear_app`/`uninstall_app` 校验包名字符集且必须在输出里看到 `Success` 才算成功 |
+| `ios/`（driver/client/archiver/peertalk/usbmux/attrs/simctl） | ~1800 | iOS 设备驱动：Lookin 协议纯 Python 复刻（协议事实源 QMUI/LookinServer @develop，MIT），详见 `specs/22_7_ios_lookin/` | usbmux 隧道/模拟器 loopback 直连 → PeerTalk 帧（16B 大端）→ NSKeyedArchiver 编解码（**标量内联↔引用形态敏感**：请求侧标量必须引用形态，`decodeInteger` 只认内联，双向都要对）；`client` pin server version=7；App(201) 请求必须 dict `{needImages, local}`（needImages=True 返回键"2"截图，实为 161×350 缩略图）；Hierarchy(202) 响应数字键；**AllAttrGroups(210) 只认 layer 的 oid**（view oid 返回 ObjNotFound 属常态）；`driver` bounds = 父链累加的窗口绝对坐标（item.frame 相对父视图，frameToRoot 由官方客户端合成）+ hidden/alpha/ivar XML 属性 + 逐节点 extras（属性分组 + ivar 名，nodeKey 与 normalize_nodes 键位对齐，根键位 = str(child_index)）；`attrs` 值归一化（NSValue NS.special 1/2/3/11 → point/size/rect/edges；UIColor = rgba 数组；ivarTraces 随 202 返回，`best_ivar` 跳过 `_layer` 等系统名）；`simctl` 模拟器截图底图（argv 全字面量，唯一 booted 才截，临时路径 `/tmp/layoutsee-sim-screenshot.png`）；**单客户端独占**（与官方 Lookin 分时）、App 后台丢监听需冷启动 |
 | `mcp_catalog.py` | 220 | MCP 12 工具目录 + ToolDispatcher | tools/list 运行时生成；写工具统一走 gate/audit；`plugin.{id}.{tool}` 由插件声明式贡献派生 |
 | `plugins.py` / `plugin_manifest.py` / `plugin_runtime.py` | ~500 | 插件索引（懒扫盘 + 签名缓存 + 资源解析）/ 清单归一化 / 声明式工具与诊断规则执行 | 构造函数不触盘，冷启动与插件数无关；`resolve_asset` 拒逃逸与符号链接；插件不执行第三方 Python |
 | `logcat.py` | 130 | LogcatHub：周期 dump + 重叠锚点对齐 → 带 seq 游标的增量日志 | 不开常驻 `adb logcat` 子进程（全部 adb 调用收敛在 `AdbClient.run`）；锚点对不上置 `dropped`，UI 提示丢日志；`clear` 重置游标与缓冲 |
@@ -75,7 +76,8 @@
 | `components/ResizeHandle.jsx` | 可访问分隔条（方向键/Shift/Home/End/双击复位） | |
 | `features/workbench/WorkbenchPage.jsx` | 工作台编排：设备轮询、抓取、只读、viewMode 状态机、控制轨、底部状态栏 | **TAB_IDS 顺序**（常用-元素查看-MCP-插件-布局智能；终端已收拢进插件页，`/workbench/terminal` 路由保留并复用 `.plugin-detail` 二级页外壳）；`selectNode` 是替换式红色高亮唯一入口（XPath/诊断高亮保留）；设备区宽度自适应 + 手动拖动后记忆；状态栏的分辨率取 `window-size`、Core 版本取 `/api/v1/info`，各取一次；**控制轨图标全走 `glyphs` + `MorphGlyph`**：冻结/只读/审查为状态 morph，音量/旋转/抓取为 `pulseIcon` 一次性 morph，Tab 图标按选中态 morph，抓取三态=相机→旋转加载→对勾（`capturing` / `captureDone`） |
 | `features/workbench/DeviceCanvas.jsx` | 设备画面：live（scrcpy）/ snapshot（布局查看）/ 截图降级三态 | **点击坐标按设备物理分辨率换算**（`window-size` 端点），不是推流分辨率；布局查看=点选命中不注入 tap；live 模式零边框满幅；`onPointerInfo` 以 60ms 节流上报坐标给状态栏 |
-| `features/workbench/tabs/ElementTab.jsx` | 元素查看：属性面板 + 层级树 + XPath + 选择器 + 导出 | 树渲染递归 **必须传 nodeKey 数组**（传对象数组=树空 bug 根源）；快照加载默认全展开；属性行 resource-id 置顶；Minimal Light/Dark 语法高亮（`--code-*` 变量）；`XPath by [id\|text\|class\|自定义]` 按 Core 返回的 `kind` 回填；多命中渲染序号 chip（>200 折叠为跳转输入框） |
+| `features/workbench/tabs/ElementTab.jsx` | 元素查看：属性面板 + 层级树 + XPath + 选择器 + 导出 | 树渲染递归 **必须传 nodeKey 数组**（传对象数组=树空 bug 根源）；快照加载默认全展开；属性行 resource-id 置顶；Minimal Light/Dark 语法高亮（`--code-*` 变量）；`XPath by [id\|text\|class\|自定义]` 按 Core 返回的 `kind` 回填；多命中渲染序号 chip（>200 折叠为跳转输入框）；iOS 节点带 `extras` 时属性面板按 Lookin 分组渲染（组·节标题 + 色块/rect 格式化），原始 XML 属性折叠进 details，树行加 ivar 徽标与自定义类（非 UI/NS/CA/CF 前缀）高亮 |
+| `features/workbench/tabs/attrFormat.js` | Lookin 属性短码→语义标签 + extras 值格式化（纯函数，node --test 直测） | 短码事实源 LookinAttrIdentifiers.m 常量名尾段；`formatAttrValue` 按 kind 输出 {text, swatch?}（color→hex+CSS 色块、rect/point/size/edges、chain→类链）；`isCustomClass` 判定自定义类 |
 | `tabs/CommonTab.jsx` | 当前应用/启停 + 包管理（搜索、系统应用开关、启动、停止、清除数据、卸载） | 启动表单预填前台应用（用户已输入不覆盖）；高危动作走统一二次确认弹窗；只读模式下写操作全禁 |
 | `tabs/TerminalTab.jsx` | 终端：自由输入 adb shell 命令 | 入口在插件页终端卡片，二级页复用 `.plugin-detail` 外壳（返回栏「< 插件」）；历史 100 条按设备隔离存 localStorage，上下键翻历史、Ctrl/Cmd+L 清屏；高危前缀（rm / pm uninstall / reboot / settings put …）二次确认，只是提醒不是安全边界；超时 15/30/60s 可选 |
 | `tabs/McpTab.jsx` / `tabs/IntelligenceTab.jsx` / `tabs/PluginsTab.jsx` | MCP 配置与工具列表 / 摘要+诊断 / 插件卡片流 | `PluginsTab` 是插件与内置工具的入口承载：终端卡片固定在卡片流首位（空插件目录时也在），一插件一张圆角卡片，点卡片进二级页（`WorkbenchPage` 用 `.plugin-detail` 整块盖住任务 Tab 栏，只留返回栏），插件不再往顶部 Tab 栏与控制轨塞入口 |

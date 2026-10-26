@@ -1,5 +1,5 @@
 // 此文件由 contracts:generate 自动生成，禁止手改。
-// schema sha256: 99f1acd02aa193248a05cdd5fa4b4b853ba876b80caf2c905f79212a1fc1b4d3
+// schema sha256: b2e98803c6abea01691696b36db16b702a8c62fa665b7bd62e89a02ff0fd4593
 
 export interface ApiError {
   "code": "DEVICE_NOT_FOUND" | "DEVICE_DISCONNECTED" | "DEVICE_OFFLINE" | "DEVICE_UNAUTHORIZED" | "ADB_NOT_FOUND" | "SNAPSHOT_IN_PROGRESS" | "SNAPSHOT_STALE" | "REF_NOT_FOUND" | "AMBIGUOUS_ELEMENT" | "INVALID_XPATH" | "READ_ONLY_MODE" | "DEVICE_BUSY" | "INVALID_ARGUMENT" | "MEDIA_UNAVAILABLE" | "PLUGIN_INVALID" | "PLUGIN_NOT_FOUND" | "PLUGIN_INCOMPATIBLE" | "PLUGIN_PERMISSION_DENIED" | "PLUGIN_RATE_LIMITED" | "HOST_CAPABILITY_UNAVAILABLE" | "PERMISSION_REQUIRED" | "VERSION_INCOMPATIBLE" | "CORE_UNAVAILABLE" | "OPERATION_TIMEOUT";
@@ -237,13 +237,35 @@ export interface LayoutSnapshotLayoutNode {
   "scrollable": boolean;
   "drawingOrder"?: number;
   "raw": Record<string, unknown>;
+  "extras"?: LayoutSnapshotNodeExtras;
+}
+
+export interface LayoutSnapshotNodeExtras {
+  "ivar": string | null;
+  "groups": Array<LayoutSnapshotAttrGroup>;
+}
+
+export interface LayoutSnapshotAttrGroup {
+  "identifier": string;
+  "sections": Array<LayoutSnapshotAttrSection>;
+}
+
+export interface LayoutSnapshotAttrSection {
+  "identifier": string;
+  "attributes": Array<LayoutSnapshotAttrItem>;
+}
+
+export interface LayoutSnapshotAttrItem {
+  "identifier": string;
+  "type": number;
+  "value": { "kind": string };
 }
 
 export interface LayoutSnapshot {
   "snapshotId": string;
   "deviceId": string;
   "createdAt": number;
-  "foreground": { "packageName": string; "activity"?: string };
+  "foreground": { "packageName": string; "activity"?: string; "appName"?: string };
   "windowSizePx": LayoutSnapshotSize;
   "density"?: number;
   "hierarchyAccuracy": "exact" | "best_effort" | "limited";

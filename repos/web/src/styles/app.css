@@ -667,6 +667,16 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .xml-line .tok-flag { color: var(--code-flag); font-size: 10.5px; }
 .tree-empty { padding: 24px; text-align: center; color: var(--ls-color-text-tertiary); }
 
+/* iOS 属性分组（对齐 Lookin 面板）与层级树 ivar / 自定义类徽标 */
+.attr-section-head { padding: 7px 12px 4px; color: var(--ls-color-text-tertiary); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; background: var(--ls-color-bg-subtle); border-top: 1px solid var(--ls-color-border-default); }
+.property-row.attr-row code { display: flex; align-items: center; gap: 6px; }
+.attr-swatch { flex: 0 0 12px; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--ls-color-border-default); }
+details.raw-attrs { border-top: 1px solid var(--ls-color-border-default); }
+details.raw-attrs summary { padding: 7px 12px; cursor: pointer; color: var(--ls-color-text-tertiary); font-size: 11px; user-select: none; }
+details.raw-attrs[open] summary { border-bottom: 1px solid var(--ls-color-border-default); }
+.xml-line .tok-ivar { color: var(--code-attr); opacity: 0.75; }
+.xml-line .tok-tag.tok-custom { color: var(--code-value); font-weight: 600; }
+
 .selector-list { display: grid; gap: 8px; }
 .selector-item { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--ls-color-border-default); border-radius: 9px; background: var(--ls-color-bg-subtle); }
 .selector-item code { flex: 1; min-width: 0; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

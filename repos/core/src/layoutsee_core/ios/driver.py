@@ -5,8 +5,9 @@
 - 抓取流程：逐端口连接（失败继续下一端口）→ Ping(0.5s) → 版本校验 → app_info(0.5s)
   → 只接受 appIsInBackground=False 的前台 App（iOS 前台唯一，结果确定）
   → Hierarchy(202) 取整树 → 逐节点 AllAttrGroups(210) 拉属性组（上限 ATTR_NODES_LIMIT，
-    对象不存在/注册表查询失败时静默空降级，快照仍可用）
-  → 生成 uiautomator 风格 XML（bounds = frame × screenScale 四舍五入取整、负值截 0）
+    对象已释放等空属性静默降级，快照仍可用）
+  → 生成 uiautomator 风格 XML（bounds = 父链累加后的窗口绝对坐标 × screenScale 取整、负值截 0）
+    并产出逐节点 extras（属性分组 + ivar 名），nodeKey 与 normalize_nodes 键位对齐
 - XML 属性提取规则集中在 ATTR_EXTRACTION_RULES，真机校准时只改这一处
 - 模拟器约束：LookinServer 单客户端——同一时刻 Lookin 官方客户端连着时端口不可达（枚举不到属正常）
 """
@@ -18,6 +19,7 @@ import xml.etree.ElementTree as ET
 
 from ..errors import CoreError
 from .archiver import decode_rect
+from .attrs import best_ivar, build_extras
 from .client import LookinClient
 from ._utils import as_int
 from .usbmux import UsbmuxClient
@@ -40,6 +42,10 @@ ATTR_EXTRACTION_RULES: dict[str, dict[str, object]] = {
 ATTR_NODES_LIMIT = 600
 # 连续拿到空属性组的次数达到该值即早停（对象注册表失效时快速放弃，避免拖慢抓取）
 ATTR_EMPTY_STREAK_LIMIT = 12
+
+
+# 模拟器 serial 前缀（simulator:{port}）；模块级导出供快照层判断设备类型
+IOS_SIMULATOR_PREFIX = "simulator:"
 
 
 def round_px(value: float) -> int:
@@ -66,15 +72,24 @@ def build_xml(
     scale: float,
     attr_groups_by_oid: dict[int, list[object]],
     warnings: list[str],
-) -> str:
-    """把 LookinDisplayItem 树渲染为 uiautomator 风格 XML。"""
+) -> tuple[str, dict[str, dict[str, object]]]:
+    """把 LookinDisplayItem 树渲染为 uiautomator 风格 XML，并产出逐节点 extras。
+
+    返回 (xml, extras_by_node_key)。bounds 为**窗口绝对坐标**：LookinServer 下发的
+    item.frame 是相对父视图的坐标（LKS_HierarchyDisplayItemsMaker 直接取 layer.frame，
+    官方客户端自行累加 frameToRoot），这里沿父链逐层累加后再乘 scale。
+    nodeKey 键位与 normalize_nodes 一致（根 = str(索引)，子 = 父键 + "." + 子索引），
+    快照层按键回填 node.extras。
+    """
     root = ET.Element("hierarchy", {"rotation": "0"})
     items = display_items if isinstance(display_items, list) else []
     if display_items is not None and not items:
         warnings.append("hierarchy 响应未提供 displayItems（键名需校准）。")
+    extras_by_key: dict[str, dict[str, object]] = {}
     for index, item in enumerate(items):
-        _build_node(root, item, index, scale, attr_groups_by_oid, warnings)
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
+        _build_node(root, item, str(index), (0.0, 0.0), scale, attr_groups_by_oid, warnings, extras_by_key)
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
+    return xml, extras_by_key
 
 
 class IOSDeviceDriver:
@@ -82,7 +97,7 @@ class IOSDeviceDriver:
 
     USB_PORTS = range(47175, 47180)
     SIM_PORTS = range(47164, 47170)
-    SIMULATOR_SERIAL_PREFIX = "simulator:"
+    SIMULATOR_SERIAL_PREFIX = IOS_SIMULATOR_PREFIX
     SIM_CONNECT_TIMEOUT_S = 0.5
 
     def __init__(self, usbmux: UsbmuxClient | None = None, sim_ports: range | tuple[int, ...] | None = None) -> None:
@@ -213,7 +228,7 @@ class IOSDeviceDriver:
     def capture(self, serial: str) -> dict[str, object]:
         """完整抓取：端口扫描选前台 App → 层级 + 属性 → uiautomator XML。
 
-        serial 为真机 UDID 或 `simulator:{port}`；返回 {"xml", "window_size", "app", "warnings"}，
+        serial 为真机 UDID 或 `simulator:{port}`；返回 {"xml", "extras", "window_size", "app", "warnings"}，
         无可用前台 App 抛 LOOKIN_APP_NOT_FOUND。
         """
         return self._capture(serial, include_raw=False)
@@ -251,9 +266,10 @@ class IOSDeviceDriver:
             warnings.extend(attr_warnings)
             warnings.extend(info.get("warnings") or [])
             warnings.extend(hierarchy.get("warnings") or [])
-            xml = build_xml(display_items, scale, attr_groups, warnings)
+            xml, extras_by_key = build_xml(display_items, scale, attr_groups, warnings)
             result: dict[str, object] = {
                 "xml": xml,
+                "extras": extras_by_key,
                 "window_size": {
                     "width": round_px(float(app.get("screenWidth") or 0) * scale),
                     "height": round_px(float(app.get("screenHeight") or 0) * scale),
@@ -278,9 +294,8 @@ class IOSDeviceDriver:
     ) -> tuple[dict[int, list[object]], list[str]]:
         """逐节点 AllAttrGroups 收集属性组：{oid: [attrGroup...]}（view/layer 双写）。
 
-        上限 ATTR_NODES_LIMIT；对象不存在（layer 未注册/已释放）是常态，静默空降级。
-        已知限制：LookinServer 1.2.8 在 iOS 27 上 oid 注册表查询失败（官方 HierarchyDetails
-        同样受影响），此时全部为空，快照仍可用（无 text/resource-id），详见 specs summary。
+        上限 ATTR_NODES_LIMIT；210 只认 layer 的 oid（handler 校验 CALayer），view 的
+        oid 查表返回 ObjNotFound 属常态，静默空降级。
         """
         groups_by_oid: dict[int, list[object]] = {}
         warnings: list[str] = []
@@ -326,8 +341,8 @@ class IOSDeviceDriver:
                     break
         if empty and not groups_by_oid and display_items:
             warnings.append(
-                "属性数据不可用：LookinServer 的对象注册表查询失败（iOS 27 上官方客户端同样受影响），"
-                "本次快照仅含层级与布局信息。"
+                "属性数据不可用：逐节点属性拉取均未命中（对象可能已释放或 LookinServer 未注册），"
+                "本次快照仅含层级与布局信息，请保持被测 App 前台后重试。"
             )
         return groups_by_oid, warnings
 
@@ -372,26 +387,47 @@ class IOSDeviceDriver:
 def _build_node(
     parent: ET.Element,
     item: object,
-    index: int,
+    key: str,
+    origin: tuple[float, float],
     scale: float,
     attr_groups_by_oid: dict[int, list[object]],
     warnings: list[str],
+    extras_by_key: dict[str, dict[str, object]],
 ) -> None:
     if not isinstance(item, dict):
         return
     class_name = _node_class(item)
-    attrs: dict[str, str] = {"index": str(index), "class": class_name}
+    attrs: dict[str, str] = {"index": str(key.rsplit(".", 1)[-1]), "class": class_name}
     frame = decode_rect(item.get("frame"))
     if frame is None:
         if item.get("frame") is not None:
             warnings.append(f"frame 无法解析（真机校准点）：class={class_name}")
-        attrs["bounds"] = "[0,0][0,0]"
+        left_f, top_f = origin
+        width_f = height_f = 0.0
     else:
-        left = max(0, round_px(frame["x"] * scale))
-        top = max(0, round_px(frame["y"] * scale))
-        right = max(0, round_px((frame["x"] + frame["width"]) * scale))
-        bottom = max(0, round_px((frame["y"] + frame["height"]) * scale))
-        attrs["bounds"] = f"[{left},{top}][{right},{bottom}]"
+        # frame 相对父视图，逐层累加成窗口绝对坐标（浮点累加，只在落 XML 时乘 scale 取整）
+        left_f = origin[0] + frame["x"]
+        top_f = origin[1] + frame["y"]
+        width_f = frame["width"]
+        height_f = frame["height"]
+    attrs["bounds"] = "[{},{}][{},{}]".format(
+        max(0, round_px(left_f * scale)),
+        max(0, round_px(top_f * scale)),
+        max(0, round_px((left_f + width_f) * scale)),
+        max(0, round_px((top_f + height_f) * scale)),
+    )
+    is_hidden = item.get("hidden") is True
+    alpha = item.get("alpha")
+    alpha_f = float(alpha) if isinstance(alpha, (int, float)) and not isinstance(alpha, bool) else 1.0
+    if is_hidden:
+        attrs["hidden"] = "true"
+    if alpha_f < 0.99:
+        attrs["alpha"] = _format_value(alpha_f)
+    extra = build_extras(item, attr_groups_by_oid)
+    if extra.get("ivar"):
+        attrs["ivar"] = str(extra["ivar"])
+    if extra.get("ivar") or extra.get("groups"):
+        extras_by_key[key] = extra
     flat_attrs = _flat_attrs(item, attr_groups_by_oid)
     class_chain = _class_chain(item)
     for xml_attr, rule in ATTR_EXTRACTION_RULES.items():
@@ -407,7 +443,7 @@ def _build_node(
     subitems = item.get("subitems")
     if isinstance(subitems, list):
         for child_index, child in enumerate(subitems):
-            _build_node(element, child, child_index, scale, attr_groups_by_oid, warnings)
+            _build_node(element, child, f"{key}.{child_index}", (left_f, top_f), scale, attr_groups_by_oid, warnings, extras_by_key)
 
 
 def _node_class(item: dict[str, object]) -> str:

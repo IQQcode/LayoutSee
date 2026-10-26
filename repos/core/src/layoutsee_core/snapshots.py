@@ -13,6 +13,8 @@ from .adb import AdbClient
 from .devices import DeviceGate, DeviceRegistry
 from .errors import CoreError
 from .ios import IOSDeviceDriver
+from .ios.driver import IOS_SIMULATOR_PREFIX
+from .ios.simctl import SimctlClient
 
 MAX_NODES = 3000
 MAX_DEPTH = 128
@@ -59,11 +61,17 @@ def normalize_nodes(xml_text: str, window_size: dict[str, int]) -> tuple[list[di
     def walk(element: ET.Element, parent_key: str | None, depth: int, parent_bounds: tuple[int, int, int, int] | None, child_index: int) -> None:
         if len(nodes) >= MAX_NODES or depth > MAX_DEPTH:
             return
-        key = "0" if parent_key is None else f"{parent_key}.{child_index}"
+        # 根节点按索引编号（Android 单根恒为 "0"；iOS 多窗口各占一个根键位）
+        key = str(child_index) if parent_key is None else f"{parent_key}.{child_index}"
         raw_attrs = dict(element.attrib)
         bounds = parse_bounds(raw_attrs.get("bounds", "")) or parent_bounds or (0, 0, 0, 0)
         has_bounds = parse_bounds(raw_attrs.get("bounds", "")) is not None
         left, top, right, bottom = bounds
+        hidden = raw_attrs.get("hidden") == "true"
+        try:
+            alpha = float(raw_attrs.get("alpha", "1") or 1)
+        except ValueError:
+            alpha = 1.0
         node: dict[str, object] = {
             "nodeKey": key,
             "parentKey": parent_key,
@@ -80,7 +88,7 @@ def normalize_nodes(xml_text: str, window_size: dict[str, int]) -> tuple[list[di
                 "right": round(right / width, 6) if width else 0,
                 "bottom": round(bottom / height, 6) if height else 0,
             },
-            "visible": has_bounds and left < right and top < bottom,
+            "visible": has_bounds and left < right and top < bottom and not hidden and alpha > 0.01,
             "enabled": raw_attrs.get("enabled", "true") == "true",
             "clickable": raw_attrs.get("clickable", "false") == "true",
             "scrollable": raw_attrs.get("scrollable", "false") == "true",
@@ -230,9 +238,11 @@ class CaptureCoordinator:
         store: SnapshotStore,
         gate: DeviceGate,
         ios: IOSDeviceDriver | None = None,
+        simctl: SimctlClient | None = None,
     ) -> None:
         self.adb = adb
         self.ios = ios
+        self.simctl = simctl
         self.registry = registry
         self.store = store
         self.gate = gate
@@ -345,22 +355,46 @@ class CaptureCoordinator:
     def _capture_ios(self, device_id: str, descriptor: dict[str, object]) -> dict[str, object]:
         """iOS 抓取：Lookin XML → 既有 normalize_nodes → 与 Android 同构的 record。
 
-        iOS 无截图链路：screenshot=None + warning 提示，Web 端按既有降级走线框渲染。
+        extras（属性分组 + ivar 名）按 nodeKey 回填到节点；模拟器额外用 simctl 截
+        全屏 PNG 作画布底图（真机待 pymobiledevice3，暂线框渲染）。
         """
         if self.ios is None:
             raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取服务未装配。")
-        result = self.ios.capture(str(descriptor["serial"]))
+        serial = str(descriptor["serial"])
+        result = self.ios.capture(serial)
         xml_text = str(result.get("xml") or "")
         window_size = self._ios_window_size(result)
         nodes, elements, element_to_key = normalize_nodes(xml_text, window_size)
 
+        extras_by_key = result.get("extras") if isinstance(result.get("extras"), dict) else {}
+        for node in nodes:
+            extra = extras_by_key.get(str(node["nodeKey"]))
+            if extra is not None:
+                node["extras"] = extra
+
         warnings = [str(item) for item in (result.get("warnings") or [])]
-        warnings.append("iOS 暂不支持截图，将以线框渲染。")
+        png = self._ios_screenshot(serial, warnings)
 
         app = result.get("app")
-        foreground = dict(app) if isinstance(app, dict) else {}
+        app_map = dict(app) if isinstance(app, dict) else {}
+        foreground = {
+            "packageName": str(app_map.get("appBundleIdentifier") or app_map.get("appName") or "unknown"),
+            "appName": str(app_map.get("appName") or ""),
+        }
 
         snapshot_id = f"snap-{uuid.uuid4().hex[:12]}"
+        screenshot_meta = None
+        if png is not None:
+            size = png_size(png)
+            if size is not None:
+                screenshot_meta = {
+                    "width": size[0],
+                    "height": size[1],
+                    "contentUrl": f"/api/v1/snapshots/{snapshot_id}/screenshot",
+                }
+            else:
+                warnings.append("模拟器截图数据无法解析（非 PNG），将以线框渲染。")
+
         ref_token = build_ref_token(self.store._secret, snapshot_id)
         refs = build_refs(nodes, ref_token)
         snapshot: dict[str, object] = {
@@ -372,20 +406,33 @@ class CaptureCoordinator:
             "density": None,
             "hierarchyAccuracy": "best_effort" if nodes else "limited",
             "synchronization": "best_effort",
-            "screenshot": None,
+            "screenshot": screenshot_meta,
             "roots": [nodes[0]["nodeKey"]] if nodes else [],
             "nodes": nodes,
             "warnings": warnings,
         }
         return {
             "snapshot": snapshot,
-            "png": None,
+            "png": png,
             "xml": xml_text,
             "elements": elements,
             "element_to_key": element_to_key,
             "refs": refs,
             "ref_token": ref_token,
         }
+
+    def _ios_screenshot(self, serial: str, warnings: list[str]) -> bytes | None:
+        """模拟器截图底图：单 booted 模拟器时 simctl 全屏 PNG，其余降级线框并提示。"""
+        if not serial.startswith(IOS_SIMULATOR_PREFIX):
+            warnings.append("iOS 真机截图暂未支持（规划 pymobiledevice3），将以线框渲染。")
+            return None
+        if self.simctl is None:
+            warnings.append("模拟器截图服务未装配，将以线框渲染。")
+            return None
+        png = self.simctl.screenshot()
+        if png is None:
+            warnings.append("模拟器截图失败（无唯一 booted 模拟器或 xcrun 不可用），将以线框渲染。")
+        return png
 
     @staticmethod
     def _ios_window_size(result: dict[str, object]) -> dict[str, int]:

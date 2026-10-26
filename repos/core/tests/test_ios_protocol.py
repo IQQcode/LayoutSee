@@ -542,7 +542,7 @@ class DriverTest(unittest.TestCase):
 
     def test_build_xml_fields_and_bounds(self) -> None:
         warnings: list[str] = []
-        xml = driver.build_xml([make_window()], 3.0, groups_by_oid(), warnings)
+        xml, extras = driver.build_xml([make_window()], 3.0, groups_by_oid(), warnings)
         self.assertEqual(warnings, [])
         self.assertIn('<hierarchy rotation="0">', xml)
         # 直接走生产解析链路 normalize_nodes 断言，同时验证生成的 XML 可被快照管线消费
@@ -555,6 +555,51 @@ class DriverTest(unittest.TestCase):
         self.assertTrue(label["enabled"])  # groups_by_oid 补充的 vl_i_i=True
         self.assertFalse(label["clickable"])
         self.assertFalse(label["scrollable"])
+        # extras 键位与 normalize_nodes 对齐（快照层按 nodeKey 回填）；无内容的节点不产空壳
+        self.assertEqual(set(extras), {"0.0"})
+        self.assertIn("0.0", {node["nodeKey"] for node in nodes})
+
+    def test_build_xml_accumulates_absolute_bounds(self) -> None:
+        """frame 相对父视图：嵌套子节点必须累加父链原点，而不是把相对坐标当绝对坐标。"""
+        window = make_window()
+        container = {
+            "_classes": ["LookinDisplayItem", "NSObject"],
+            "frame": {"X": 10.0, "Y": 200.0, "Width": 300.0, "Height": 100.0},
+            "viewObject": {"oid": 3, "classChainList": ["UIView"], "_classes": ["LookinObject", "NSObject"]},
+            "subitems": [{
+                "_classes": ["LookinDisplayItem", "NSObject"],
+                "frame": {"X": 5.0, "Y": 6.0, "Width": 50.0, "Height": 20.0},
+                "viewObject": {"oid": 4, "classChainList": ["UILabel", "UIView"], "_classes": ["LookinObject", "NSObject"]},
+                "subitems": [],
+            }],
+        }
+        window["subitems"] = [container]
+        xml, _ = driver.build_xml([window], 2.0, {}, [])
+        nodes, _, _ = normalize_nodes(xml, {"width": 800, "height": 1800})
+        by_class = {node["className"]: node for node in nodes}
+        # 容器 = (0+10, 0+200) ×2；深层子节点 = (0+10+5, 0+200+6) ×2
+        self.assertEqual(by_class["UIView"]["boundsPx"], {"left": 20, "top": 400, "right": 620, "bottom": 600})
+        self.assertEqual(by_class["UILabel"]["boundsPx"], {"left": 30, "top": 412, "right": 130, "bottom": 452})
+
+    def test_build_xml_hidden_and_alpha_affect_visibility(self) -> None:
+        window = make_window()
+        window["subitems"][0]["hidden"] = True
+        window["subitems"].append({
+            "_classes": ["LookinDisplayItem", "NSObject"],
+            "frame": {"X": 0.0, "Y": 500.0, "Width": 100.0, "Height": 30.0},
+            "alpha": 0.0,
+            "viewObject": {"oid": 5, "classChainList": ["UIView"], "_classes": ["LookinObject", "NSObject"]},
+            "subitems": [],
+        })
+        xml, _ = driver.build_xml([window], 3.0, {}, [])
+        nodes, _, _ = normalize_nodes(xml, {"width": 1170, "height": 2532})
+        visible_by_class: dict[str, bool] = {}
+        for node in nodes:
+            visible_by_class.setdefault(node["className"], node["visible"])
+        self.assertFalse(visible_by_class["UILabel"])  # hidden=True → XML 带 hidden 属性
+        self.assertFalse(visible_by_class["UIView"])  # alpha=0 → 同样不可见
+        self.assertIn('hidden="true"', xml)
+        self.assertIn('alpha="0"', xml)
 
     def test_build_xml_unparsable_frame_records_warning(self) -> None:
         item: dict[str, object] = {
@@ -563,7 +608,7 @@ class DriverTest(unittest.TestCase):
             "subitems": [],
         }
         warnings: list[str] = []
-        xml = driver.build_xml([item], 1.0, {}, warnings)
+        xml, _ = driver.build_xml([item], 1.0, {}, warnings)
         nodes, _, _ = normalize_nodes(xml, {"width": 100, "height": 100})
         self.assertEqual(nodes[0]["boundsPx"], {"left": 0, "top": 0, "right": 0, "bottom": 0})
         self.assertEqual(len(warnings), 1)
@@ -676,6 +721,96 @@ class SimulatorDriverTest(unittest.TestCase):
             ios_driver.capture("simulator:1")
         self.assertEqual(ctx.exception.code, "LOOKIN_APP_NOT_FOUND")
         self.assertIn("模拟器", ctx.exception.message)
+
+
+class AttrsTest(unittest.TestCase):
+    """属性值归一化与 extras 构建（值形态按 2026-10-27 实弹校准）。"""
+
+    def test_normalize_attr_value_shapes(self) -> None:
+        from layoutsee_core.ios.attrs import normalize_attr_value
+
+        rect = {"NS.rectval": "{{61.99, 11}, {103.33, 24}}", "NS.special": 3, "_classes": ["NSValue"]}
+        self.assertEqual(
+            normalize_attr_value({"attrType": 20, "value": rect}),
+            {"kind": "rect", "x": 61.99, "y": 11.0, "width": 103.33, "height": 24.0},
+        )
+        point = {"NS.pointval": "{113.66, 23}", "NS.special": 1, "_classes": ["NSValue"]}
+        self.assertEqual(normalize_attr_value({"attrType": 17, "value": point}), {"kind": "point", "x": 113.66, "y": 23.0})
+        size = {"NS.sizeval": "{402, 874}", "NS.special": 2, "_classes": ["NSValue"]}
+        self.assertEqual(normalize_attr_value({"attrType": 19, "value": size}), {"kind": "size", "width": 402.0, "height": 874.0})
+        edges = {"NS.edgeval.top": 0.0, "NS.edgeval.left": 1.0, "NS.edgeval.bottom": 2.0, "NS.edgeval.right": 3.0, "NS.special": 11}
+        self.assertEqual(
+            normalize_attr_value({"attrType": 22, "value": edges}),
+            {"kind": "edges", "top": 0.0, "left": 1.0, "bottom": 2.0, "right": 3.0},
+        )
+        self.assertEqual(
+            normalize_attr_value({"attrType": 27, "value": [0.082, 0.396, 0.753, 1.0]}),
+            {"kind": "color", "rgba": [0.082, 0.396, 0.753, 1.0]},
+        )
+        self.assertEqual(normalize_attr_value({"attrType": 26, "value": 7}), {"kind": "enum", "value": 7})
+        self.assertEqual(normalize_attr_value({"attrType": 14, "value": False}), {"kind": "boolean", "value": False})
+        self.assertEqual(normalize_attr_value({"attrType": 13, "value": 3.0}), {"kind": "number", "value": 3.0})
+        self.assertEqual(normalize_attr_value({"attrType": 24, "value": "PackSmart"}), {"kind": "string", "value": "PackSmart"})
+        self.assertEqual(normalize_attr_value({"attrType": 27, "value": None}), {"kind": "nil"})
+        self.assertEqual(
+            normalize_attr_value({"attrType": 28, "value": [["UILabel", "UIView"]]}),
+            {"kind": "chain", "value": [["UILabel", "UIView"]]},
+        )
+        self.assertEqual(normalize_attr_value({"attrType": 0, "value": {"weird": 1}})["kind"], "raw")
+
+    def test_normalize_attr_groups_skips_empty(self) -> None:
+        from layoutsee_core.ios.attrs import normalize_attr_groups
+
+        groups = normalize_attr_groups([
+            {
+                "identifier": "la",
+                "attrSections": [{
+                    "identifier": "lb_t",
+                    "attributes": [{"identifier": "lb_t_t", "attrType": 24, "value": "你好"}],
+                }],
+            },
+            {"identifier": "empty", "attrSections": [{"identifier": "x", "attributes": []}]},
+            "not-a-dict",
+        ])
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["identifier"], "la")
+        self.assertEqual(groups[0]["sections"][0]["attributes"][0]["identifier"], "lb_t_t")
+
+    def test_best_ivar_prefers_non_system_name(self) -> None:
+        from layoutsee_core.ios.attrs import best_ivar
+
+        item = {
+            "viewObject": {"ivarTraces": None},
+            "layerObject": {"ivarTraces": [{"ivarName": "_layer", "hostClassName": "UILabel : UIView"}]},
+        }
+        self.assertIsNone(best_ivar(item))  # 只有系统 _layer 时不硬凑
+        item["viewObject"] = {"ivarTraces": [{"ivarName": "_titleLabel", "hostClassName": "PSVibeCardView : UIView"}]}
+        self.assertEqual(best_ivar(item), "_titleLabel")
+        item["layerObject"] = {"ivarTraces": [{"ivarName": "_badgeIcon", "hostClassName": "PSVibeCardView : UIView"}]}
+        # viewObject 命中即返回，不看 layerObject
+        self.assertEqual(best_ivar(item), "_titleLabel")
+
+    def test_build_extras_from_layer_oid_groups(self) -> None:
+        from layoutsee_core.ios.attrs import build_extras
+
+        item = {
+            "layerObject": {"oid": 37, "ivarTraces": [{"ivarName": "_layer", "hostClassName": "UILabel : UIView"}]},
+            "viewObject": {"oid": 38},
+        }
+        groups_by_oid = {
+            37: [{
+                "identifier": "l",
+                "attrSections": [{
+                    "identifier": "l_f",
+                    "attributes": [{"identifier": "l_f_f", "attrType": 20, "value": {"NS.rectval": "{{1, 2}, {3, 4}}", "NS.special": 3}}],
+                }],
+            }],
+            38: [],
+        }
+        extra = build_extras(item, groups_by_oid)
+        self.assertIsNone(extra["ivar"])
+        self.assertEqual(extra["groups"][0]["identifier"], "l")
+        self.assertEqual(extra["groups"][0]["sections"][0]["attributes"][0]["value"]["kind"], "rect")
 
 
 if __name__ == "__main__":

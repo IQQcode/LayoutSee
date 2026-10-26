@@ -69,6 +69,23 @@ class StubIOSDriver:
             raise self.capture_error
         return {
             "xml": IOS_XML,
+            "extras": {
+                # nodeKey 与 IOS_XML 键位对齐（根 "0"、子 "0.0"）
+                "0.0": {
+                    "ivar": "_loginButton",
+                    "groups": [{
+                        "identifier": "l",
+                        "sections": [{
+                            "identifier": "l_f",
+                            "attributes": [{
+                                "identifier": "l_f_f",
+                                "type": 20,
+                                "value": {"kind": "rect", "x": 20.0, "y": 40.0, "width": 160.0, "height": 33.33},
+                            }],
+                        }],
+                    }],
+                },
+            },
             "window_size": {"width": 1170, "height": 2532},
             "app": {"appName": "LookinDemo", "appBundleIdentifier": "com.qmui.lookindemo"},
             "warnings": [],
@@ -196,7 +213,7 @@ class IOSCaptureTest(unittest.TestCase):
         self.assertIsNone(snapshot["screenshot"])
         self.assertEqual(snapshot["density"], None)
         self.assertEqual(snapshot["foreground"]["appName"], "LookinDemo")
-        self.assertEqual(snapshot["foreground"]["appBundleIdentifier"], "com.qmui.lookindemo")
+        self.assertEqual(snapshot["foreground"]["packageName"], "com.qmui.lookindemo")
         self.assertTrue(snapshot["warnings"])
         nodes = snapshot["nodes"]
         self.assertEqual(nodes[0]["boundsPx"], {"left": 0, "top": 0, "right": 1170, "bottom": 2532})
@@ -205,6 +222,11 @@ class IOSCaptureTest(unittest.TestCase):
         self.assertEqual(button["text"], "登录")
         self.assertEqual(button["resourceId"], "login-button")
         self.assertTrue(button["clickable"])
+        # extras 按键回填：ivar + 属性分组随节点下发（属性面板数据源）
+        self.assertEqual(button["extras"]["ivar"], "_loginButton")
+        self.assertEqual(button["extras"]["groups"][0]["identifier"], "l")
+        self.assertEqual(button["extras"]["groups"][0]["sections"][0]["attributes"][0]["value"]["kind"], "rect")
+        self.assertNotIn("extras", nodes[0])  # 无 extras 的节点不带空壳字段
         self.assertEqual(snapshot["roots"], [nodes[0]["nodeKey"]])
 
     def test_ios_window_size_without_snapshot_returns_404(self) -> None:
@@ -232,6 +254,51 @@ class IOSCaptureTest(unittest.TestCase):
         status, payload = self._get(f"/api/v1/devices/{IOS_DEVICE_ID}/current-app")
         self.assertEqual(status, 200)
         self.assertEqual(payload["data"]["appName"], "LookinDemo")
+
+    def test_ios_simulator_capture_attaches_screenshot(self) -> None:
+        """模拟器 serial：simctl 截图成功 → png/screenshot 元数据进 record，无降级 warning。"""
+
+        class SimDriver(StubIOSDriver):
+            def devices(self) -> list[dict[str, object]]:
+                return [{**super().devices()[0], "deviceId": "ios-sim-47199", "serial": "simulator:47199"}]
+
+        class StubSimctl:
+            def screenshot(self) -> bytes | None:
+                return tiny_png(1170, 2532)
+
+        sim = SimDriver()
+        self.context.capture.ios = sim
+        self.context.registry.ios = sim
+        self.context.capture.simctl = StubSimctl()
+        self.context.registry.refresh()
+        status, payload = self._post("/api/v1/devices/ios-sim-47199/snapshots")
+        self.assertEqual(status, 200)
+        status, detail = self._get(f"/api/v1/snapshots/{payload['data']['snapshotId']}")
+        self.assertEqual(status, 200)
+        data = detail["data"]
+        self.assertIsNotNone(data["screenshot"])
+        self.assertEqual(data["screenshot"]["width"], 1170)
+        self.assertEqual(data["screenshot"]["height"], 2532)
+        self.assertFalse(any("线框" in warning for warning in data["warnings"]))
+
+    def test_ios_simulator_capture_degrades_without_screenshot(self) -> None:
+        """simctl 失败（多台 booted/截图异常）：快照仍产出，warning 提示线框渲染。"""
+
+        class SimDriver(StubIOSDriver):
+            def devices(self) -> list[dict[str, object]]:
+                return [{**super().devices()[0], "deviceId": "ios-sim-47199", "serial": "simulator:47199"}]
+
+        sim = SimDriver()
+        self.context.capture.ios = sim
+        self.context.registry.ios = sim
+        self.context.capture.simctl = type("StubSimctl", (), {"screenshot": staticmethod(lambda: None)})()
+        self.context.registry.refresh()
+        status, payload = self._post("/api/v1/devices/ios-sim-47199/snapshots")
+        self.assertEqual(status, 200)
+        status, detail = self._get(f"/api/v1/snapshots/{payload['data']['snapshotId']}")
+        self.assertEqual(status, 200)
+        self.assertIsNone(detail["data"]["screenshot"])
+        self.assertTrue(any("线框" in warning for warning in detail["data"]["warnings"]))
 
     def test_ios_apps_returns_empty_with_note(self) -> None:
         status, payload = self._get(f"/api/v1/devices/{IOS_DEVICE_ID}/apps")

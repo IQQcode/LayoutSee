@@ -1,5 +1,5 @@
 # 此文件由 contracts:generate 自动生成，禁止手改。
-# schema sha256: 99f1acd02aa193248a05cdd5fa4b4b853ba876b80caf2c905f79212a1fc1b4d3
+# schema sha256: b2e98803c6abea01691696b36db16b702a8c62fa665b7bd62e89a02ff0fd4593
 
 from __future__ import annotations
 
@@ -243,6 +243,28 @@ class LayoutSnapshotLayoutNode(BaseModel):
     scrollable: bool
     drawingOrder: Optional[int] = None
     raw: dict[str, Any]
+    extras: Optional[LayoutSnapshotNodeExtras] = None
+
+class LayoutSnapshotNodeExtras(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ivar: Union[str, None]
+    groups: list[LayoutSnapshotAttrGroup]
+
+class LayoutSnapshotAttrGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    sections: list[LayoutSnapshotAttrSection]
+
+class LayoutSnapshotAttrSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    attributes: list[LayoutSnapshotAttrItem]
+
+class LayoutSnapshotAttrItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    type: int
+    value: dict[str, Any]
 
 class LayoutSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")

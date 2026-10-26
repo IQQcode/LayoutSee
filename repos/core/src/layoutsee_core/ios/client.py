@@ -80,17 +80,24 @@ class LookinClient:
             raise CoreError("LOOKIN_UNAVAILABLE", "Ping 响应缺少 lookinServerVersion。")
         return version
 
-    def app_info(self) -> dict[str, object]:
-        """App 信息（请求参数按 LookinServer 要求必须为 dict），返回规整后的业务键。"""
+    def app_info(self, need_images: bool = False) -> dict[str, object]:
+        """App 信息（请求参数按 LookinServer 要求必须为 dict），返回规整后的业务键。
+
+        need_images=True 时响应额外携带全屏截图（键 "2"，UIImagePNGRepresentation 的
+        PNG 字节）与应用图标（键 "1"），仅抓取阶段使用，探测轮询保持 False 省流量。
+        """
         attach, warnings = self._request(
             REQUEST_APP,
-            timeout=PROBE_TIMEOUT,
-            data={"needImages": False, "local": []},
+            timeout=REQUEST_TIMEOUT if need_images else PROBE_TIMEOUT,
+            data={"needImages": need_images, "local": []},
         )
-        result = _normalize_app_info(attach.get("0"))
+        payload = attach.get("0") if isinstance(attach.get("0"), dict) else {}
+        result = _normalize_app_info(payload)
+        screenshot = payload.get("2")
         result.update({
             "appIsInBackground": attach.get("appIsInBackground"),
             "serverVersion": attach.get("lookinServerVersion"),
+            "screenshotPng": bytes(screenshot) if isinstance(screenshot, (bytes, bytearray)) else None,
             "warnings": warnings,
         })
         return result
