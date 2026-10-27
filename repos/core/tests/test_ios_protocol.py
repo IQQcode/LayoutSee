@@ -581,6 +581,28 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(by_class["UIView"]["boundsPx"], {"left": 20, "top": 400, "right": 620, "bottom": 600})
         self.assertEqual(by_class["UILabel"]["boundsPx"], {"left": 30, "top": 412, "right": 130, "bottom": 452})
 
+    def test_build_xml_subtracts_parent_bounds_origin(self) -> None:
+        """滚动容器（bounds.origin ≠ 0）：官方 calculateFrameToRoot 会先扣除父级 bounds.origin。"""
+        window = make_window()
+        scroll_view = {
+            "_classes": ["LookinDisplayItem", "NSObject"],
+            "frame": {"X": 0.0, "Y": 200.0, "Width": 402.0, "Height": 567.0},
+            "bounds": {"X": 0.0, "Y": 687.0, "Width": 402.0, "Height": 567.0},
+            "viewObject": {"oid": 6, "classChainList": ["UIScrollView", "UIView"], "_classes": ["LookinObject", "NSObject"]},
+            "subitems": [{
+                "_classes": ["LookinDisplayItem", "NSObject"],
+                "frame": {"X": 0.0, "Y": 700.0, "Width": 402.0, "Height": 60.0},
+                "viewObject": {"oid": 7, "classChainList": ["UILabel", "UIView"], "_classes": ["LookinObject", "NSObject"]},
+                "subitems": [],
+            }],
+        }
+        window["subitems"] = [scroll_view]
+        xml, _ = driver.build_xml([window], 3.0, {}, [])
+        nodes, _, _ = normalize_nodes(xml, {"width": 1206, "height": 2622})
+        label = next(node for node in nodes if node["className"] == "UILabel")
+        # y = (700 - 687 + 200) ×3 = 639；未扣 bounds.origin 会错成 (700+200)×3=2700
+        self.assertEqual(label["boundsPx"], {"left": 0, "top": 639, "right": 1206, "bottom": 819})
+
     def test_build_xml_hidden_and_alpha_affect_visibility(self) -> None:
         window = make_window()
         window["subitems"][0]["hidden"] = True

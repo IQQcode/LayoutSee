@@ -192,7 +192,7 @@ export function formatAttrValue(value) {
   }
 }
 
-// 非 UIKit 系统前缀（UI/NS/_UI/_NS）视为业务自定义类，树中高亮
+// 非系统类前缀判定为业务自定义类，树中高亮（对齐官方 representedForSystemClass：UI/CA/_ 视为系统）
 export function isCustomClass(className) {
-  return typeof className === "string" && className.length > 0 && !/^(UI|NS|_UI|_NS|CF|CA)/.test(className);
+  return typeof className === "string" && className.length > 0 && !/^(UI|NS|_|CF|CA)/.test(className);
 }

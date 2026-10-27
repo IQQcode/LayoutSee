@@ -77,7 +77,8 @@ def build_xml(
 
     返回 (xml, extras_by_node_key)。bounds 为**窗口绝对坐标**：LookinServer 下发的
     item.frame 是相对父视图的坐标（LKS_HierarchyDisplayItemsMaker 直接取 layer.frame，
-    官方客户端自行累加 frameToRoot），这里沿父链逐层累加后再乘 scale。
+    官方客户端自行累加 frameToRoot），这里按官方 calculateFrameToRoot 公式沿父链累加
+    （frame.origin - 父级 bounds.origin + 父级 frameToRoot）后再乘 scale。
     nodeKey 键位与 normalize_nodes 一致（根 = str(索引)，子 = 父键 + "." + 子索引），
     快照层按键回填 node.extras。
     """
@@ -87,7 +88,7 @@ def build_xml(
         warnings.append("hierarchy 响应未提供 displayItems（键名需校准）。")
     extras_by_key: dict[str, dict[str, object]] = {}
     for index, item in enumerate(items):
-        _build_node(root, item, str(index), (0.0, 0.0), scale, attr_groups_by_oid, warnings, extras_by_key)
+        _build_node(root, item, str(index), (0.0, 0.0), (0.0, 0.0), scale, attr_groups_by_oid, warnings, extras_by_key)
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
     return xml, extras_by_key
 
@@ -389,6 +390,7 @@ def _build_node(
     item: object,
     key: str,
     origin: tuple[float, float],
+    parent_bounds_origin: tuple[float, float],
     scale: float,
     attr_groups_by_oid: dict[int, list[object]],
     warnings: list[str],
@@ -404,12 +406,17 @@ def _build_node(
             warnings.append(f"frame 无法解析（真机校准点）：class={class_name}")
         left_f, top_f = origin
         width_f = height_f = 0.0
+        bounds_origin = (0.0, 0.0)
     else:
-        # frame 相对父视图，逐层累加成窗口绝对坐标（浮点累加，只在落 XML 时乘 scale 取整）
-        left_f = origin[0] + frame["x"]
-        top_f = origin[1] + frame["y"]
+        # frameToRoot = frame.origin - 父级 bounds.origin + 父级 frameToRoot（对齐官方
+        # LookinDisplayItem+LookinClient calculateFrameToRoot：bounds.origin ≠ 0 的滚动
+        # 容器里，子节点 frame 相对 bounds 原点，需先扣除 contentOffset 类偏移）
+        left_f = frame["x"] - parent_bounds_origin[0] + origin[0]
+        top_f = frame["y"] - parent_bounds_origin[1] + origin[1]
         width_f = frame["width"]
         height_f = frame["height"]
+        item_bounds = decode_rect(item.get("bounds"))
+        bounds_origin = (item_bounds["x"], item_bounds["y"]) if item_bounds else (0.0, 0.0)
     attrs["bounds"] = "[{},{}][{},{}]".format(
         max(0, round_px(left_f * scale)),
         max(0, round_px(top_f * scale)),
@@ -443,7 +450,7 @@ def _build_node(
     subitems = item.get("subitems")
     if isinstance(subitems, list):
         for child_index, child in enumerate(subitems):
-            _build_node(element, child, f"{key}.{child_index}", (left_f, top_f), scale, attr_groups_by_oid, warnings, extras_by_key)
+            _build_node(element, child, f"{key}.{child_index}", (left_f, top_f), bounds_origin, scale, attr_groups_by_oid, warnings, extras_by_key)
 
 
 def _node_class(item: dict[str, object]) -> str:

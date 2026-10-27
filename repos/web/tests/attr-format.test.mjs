@@ -54,6 +54,7 @@ test("isCustomClass 区分系统类与业务自定义类", () => {
   assert.equal(isCustomClass("UILabel"), false);
   assert.equal(isCustomClass("NSLayoutAnchor"), false);
   assert.equal(isCustomClass("_UITouchPassthroughView"), false);
+  assert.equal(isCustomClass("_PSFooView"), false); // _ 前缀归系统类（对齐官方 representedForSystemClass）
   assert.equal(isCustomClass("PSVibeCardView"), true);
   assert.equal(isCustomClass("PSBadgeLabel"), true);
   assert.equal(isCustomClass(""), false);
