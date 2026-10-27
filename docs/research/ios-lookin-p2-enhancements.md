@@ -16,6 +16,12 @@
 | 206 InvokeMethod | **远端无参 selector 任意调用**：请求 `{oid, text(selector 字符串)}`，从对象注册表取目标 → `NSSelectorFromString` → `respondsToSelector` 校验后 NSInvocation 执行；**带参方法直接拒绝**（`numberOfArguments > 2`）；**无 selector 白名单**；返回 `{description(结果字符串化), object(结果对象 LookinObject)}`，NSString 结果直接落在 description | `LKS_RequestHandler.m:199-238, 328-380` |
 | 208 FetchImageViewImage | 严格限定 `UIImageView.image`（强转校验），返回 PNG 字节——只适合看图片内容，**不能渲染任意视图** | `LKS_RequestHandler.m:246-263` |
 | 自定义属性 | App 侧实现 `lookin_customDebugInfos` / `lookin_customDebugInfos_0..4` 方法即可在属性面板出现自定义分组——是 **App 代码路径**，不存在「不 fork 也不改 App」的 a11y 注入点 | `LKS_CustomAttrGroupsMaker.m:44-52` |
+| 官方客户端 203 分包 | 分包按**面积感知 + 数量上限**：`packageMaxArea = 2,000,000 px²`（task.frameSize 累加）、`packageMaxTasksCount = 100`；task 的 oid 取 `layerObject.oid` | `LKStaticAsyncUpdateManager.m:177-206` |
+| 官方客户端图片时机 | **常规全量刷新 taskType = NoScreenshot（不拉图）**；图片只在单节点重载时按需拉：`doNotFetchScreenshotReason == Permitted` 时发 group 图 task，若节点可展开（isExpandable）再加一个 solo 图 task；依赖 LookinServer ≥ 1.2.7（客户端显式校验并提示升级） | `LKReloadItemAndChildrenUpdateTaskMaker.m:29`、`LKReloadSingleItemUpdateTaskMaker.m:29-49` |
+| 官方画布纹理选择 | `appropriateScreenshot`：**展开的容器用 solo 图，折叠/叶子用 group 图**（3D 展开态必须用 solo，否则容器 group 图会盖住子层平面） | `LookinDisplayItem+LookinClient.m:57-61` |
+| 官方 3D 实现 | **SceneKit**：每节点一个 SCNPlane（+border/mask 节点），相机 `focalLength = 20 + scale² × 730`，层距 `zInterspace` 2D 恒 0.01、3D = 0.1 + z×0.7，按 zIndex 排布并加偏移防平面重叠渲染 bug；2D/3D 切换 = rotation 归零与保留 | `LKPreviewView.m:155-176, 330-345`、`LKDisplayItemNode.m:18-58` |
+| 官方 frameToRoot 公式 | `child.frame.origin − 父级 bounds.origin + 父级 frameToRoot`（递归）；bounds.origin ≠ 0 的滚动容器必须扣除该偏移，否则滚动内容整体错位 | `LookinDisplayItem+LookinClient.m:88-104` |
+| 官方 206 用法 | 仅用于 Dashboard 的「方法搜索调用」交互功能（用户输入 selector 后远程执行） | `LKDashboardViewController.m:453` |
 | 已知限制（不变） | LookinServer 属性组不含 accessibilityIdentifier/Label（Blueprint 无此属性，grep 零命中）；单客户端独占；主线程处理（抓取期间 App UI 有感知） | — |
 
 另：我们现有 `client.hierarchy_details()` 已实现 203 的分批读骨架（`dataTotalCount/currentDataCount` 聚合），但其 `merge_hierarchy_details` 会 `_strip_image_fields` 丢弃全部字节——图片流需要改为按需保留，属改造而非新建。
@@ -31,23 +37,23 @@
 - 落点：`driver._capture` 在逐节点 210 之后串行/小并发调用 206 → 结果并入 `ATTR_EXTRACTION_RULES` 的 resource-id / content-desc 提取 → XML 与 extras 全链路（XPath/选择器/摘要/诊断/MCP）自动受益。
 - **备选（仅当 206 批量性能不可接受时启用）**：fork LookinServer（MIT 合规），在 `LookinDashboardBlueprint` 增加 a11y 分组（groupID/sectionID/attrIDs + getter 映射表），属性组随 210 批量返回；代价是被测 App 必须把依赖换成 fork 版（采纳摩擦），且承担 fork 维护。fork diff 本身很小（一张 Blueprint 常量表 + 属性名），真正成本在 App 侧依赖切换。
 
-### 2. 逐节点图片——203 定点任务包，不做全量
+### 2. 逐节点图片——203 定点任务包，**按需优先（官方同款），全树为可选增强**
 
-原设想「needImages/208」不准确：needImages 只控制 App 缩略图（161×350，已验证过糊），208 仅 UIImageView。**正解是 203 的任务包协议按 oid 定点拉取**，天然支持两种粒度：
+原设想「needImages/208」不准确：needImages 只控制 App 缩略图（161×350，已验证过糊），208 仅 UIImageView。正解是 203 的任务包协议按 oid 定点拉取。**官方客户端的行为给出了粒度答案：常规刷新不拉图（NoScreenshot），图片只在单节点重载时按需取**——因此 v1 以「选中节点按需拉图」为主体（与官方一致），「全树深度抓取」降为可选增强（官方从未做全树带图，主线程时长风险需自担）：
 
-- **显式「深度抓取」**：工具栏按钮，对全树（或当前可见容器子树）发 203 任务包，taskType=group（容器合成图，含子树，正是画布/3D 需要的形态），分包步进（每包 10–20 个 oid）避免主线程长阻塞；预期全树 228 节点 10–30MB PNG、3–10s——设计为显式动作，符合既有 CaptureCoordinator 原子抓取模型之外的第二动作。
-- **选中节点按需**：选中某节点时只发 1 个 task 拉它的 group 图（亚秒级），用于属性面板「所见」与局部核对。
+- **选中节点按需（v1 主体）**：选中某节点时发 task 拉它的 group 图（亚秒级），用于属性面板「所见」、画布局部核对与 3D 纹理；节点可展开时同批加 solo 图 task（3D 展开态纹理需要，见下）。分包参数直接对齐官方：单包累计面积 ≤ 2,000,000 px²、任务数 ≤ 100。
+- **全树深度抓取（可选增强）**：工具栏显式动作，对全树按官方分包参数发 203；预期全树 228 节点 10–30MB PNG、3–10s。是否排入 v1 由实测定夺。
 
 - 落点（core）：`client` 新增 203 请求编排（复用分批读骨架，去掉图片丢弃逻辑；请求侧编码 LookinStaticAsyncUpdateTasksPackage 用现有 `encode_keyed_object` 模式，编码键按 `LookinStaticAsyncUpdateTask.m` 校准）；图片字节按 displayItemOid 存内存缓存 `{snapshotId: {nodeKey: png}}`，**不进快照 JSON**（避免 record 膨胀 10–30MB）；新增 `GET /api/v1/snapshots/{id}/nodes/{key}/image` 端点（Host/Origin/会话校验与既有一致）。
-- 落点（web）：画布「图像模式」开关（线框之上叠真实截图纹理）+ 属性面板所见图；`<img>` 懒加载逐节点请求。
+- 落点（web）：属性面板「所见」图 + 画布「图像模式」开关（线框之上叠真实截图纹理），`<img>` 懒加载逐节点请求。
 - 与 simctl 底图的关系：底图是全屏静态 PNG（已落地）；逐节点图提供**分层真实渲染**（可做遮挡分析、单独视图查看、3D 纹理），二者互补不互替。
 
-### 3. 3D 分层视图——web CSS 3D，分两阶段
+### 3. 3D 分层视图——web CSS 3D，分两阶段（官方为 SceneKit，概念可直接映射）
 
-Lookin 官方客户端的 3D 体验（用户截图证实）：2D/3D 切换、自由旋转、图像模式开关、分层展开 + 真实截图纹理、点击选中联动。GPL 客户端的实现不可复用，但 web 侧 CSS 3D 能以低成本复刻核心交互：
+官方 3D 是 SceneKit 场景（每节点一个 SCNPlane + 相机 + 层距），其参数为 web CSS 3D 提供了直接映射：相机 `focalLength = 20 + scale² × 730` ↔ CSS `perspective`；层距 `zInterspace`（2D=0.01 / 3D=0.1+z×0.7）↔ `translateZ(depth × 步长)`；rotation CGPoint（弧度，2D 切换即归零）↔ `rotateX/rotateY` 状态。核心交互复刻完全可行：
 
-- **阶段一（wireframe 版，数据已齐）**：`.device-frame` 加 `perspective`，快照节点层加 `transform-style: preserve-3d; transform: rotateX(θ) rotateY(φ)`，每个线框 div 追加 `translateZ(depth × 间距)`。228 个绝对定位 div 无性能压力；浏览器合成器原生处理 3D 深度排序；**DOM 命中在 3D 变换下仍生效**——但现有 `hitTest`（boundingRect 反算 nx/ny）在旋转后失效，需改为以事件 target 上的 `data-node-key` 直接命中（更简单也更准）。交互：拖拽旋转（pointer 事件已有基础）、滚轮缩放、2D/3D 切换按钮、重置。分层维度 v1 按 depth（层级树深度）。
-- **阶段二（图片纹理，依赖第 2 项）**：线框 div 以对应节点 group 图为 `background-image`，懒加载；「图像模式」开关对齐 Lookin。
+- **阶段一（wireframe 版，数据已齐）**：`.device-frame` 加 `perspective`，快照节点层加 `transform-style: preserve-3d; transform: rotateX(θ) rotateY(φ)`，每个线框 div 追加 `translateZ(depth × 步长)`。228 个绝对定位 div 无性能压力；浏览器合成器原生处理 3D 深度排序；**DOM 命中在 3D 变换下仍生效**——但现有 `hitTest`（boundingRect 反算 nx/ny）在旋转后失效，需改为以事件 target 上的 `data-node-key` 直接命中（更简单也更准）。交互：拖拽旋转（pointer 事件已有基础）、滚轮缩放、2D/3D 切换按钮（对齐官方语义：切 2D 时旋转归零、切 3D 保留当前角度）、重置。分层维度 v1 按 depth（层级树深度）。
+- **阶段二（图片纹理，依赖第 2 项）**：纹理选择对齐官方 `appropriateScreenshot` 语义——**展开的容器用 solo 图、折叠/叶子用 group 图**（否则容器 group 图会盖住子层平面，3D 分层失去意义）；懒加载；「图像模式」开关对齐 Lookin。
 - 落点：DeviceCanvas 新增 snapshot 内 3D 开关（不动 live 模式）；CSS 新增 `preserve-3d` 相关规则；WorkbenchPage 无需新状态（开关收敛在画布内）。
 - 备选方案 three.js/WebGL 否决：引入渲染依赖、与既有 DOM 树选择/联动机制割裂，CSS 3D 足够。
 - 环境支持：Electron 44（Chromium）与主流浏览器对 `preserve-3d` 支持成熟，无兼容风险。
@@ -68,10 +74,14 @@ Lookin 官方客户端的 3D 体验（用户截图证实）：2D/3D 切换、自
 | 阶段 | 内容 | 估算 |
 |---|---|---|
 | P2-a | resource-id：206 编排 + 白名单 + 提取规则 + 单测（206 响应金样） | 0.5–1 天 |
-| P2-b | 逐节点图片：203 定点编排 + 请求编码校准 + 缓存/端点 + web 加载 | 1.5–2 天 |
+| P2-b | 逐节点图片：203 定点编排（选中按需为主）+ 请求编码校准 + 缓存/端点 + web 加载 | 1.5–2 天 |
 | P2-c | 3D wireframe：CSS 3D + 交互 + 命中改造 | 1 天 |
-| P2-d | 3D 图片纹理 + 图像模式 | 0.5–1 天 |
+| P2-d | 3D 图片纹理（solo/group 选择对齐官方）+ 图像模式 | 0.5–1 天 |
 | **合计** | （b 是 d 前置；a 独立可先行） | **约 3.5–5 人天** |
+
+## 官方客户端源码核验记录（2026-10-27，/Users/jiazihui/Documents/Temp/lookin/Lookin）
+
+调研期间用 GPL 的官方 mac 客户端源码（只读理解行为，不复制代码）核验了本文件全部关键论断，并有一项意外收获：官方 `calculateFrameToRoot` 公式（`frame.origin − 父级 bounds.origin + 父级 frameToRoot`）暴露出 v22.7 展示层补完轮 driver 坐标累加**缺少「减父级 bounds.origin」**——滚动容器（UIScrollView contentOffset，bounds.origin ≠ 0）里的子节点画布位置会整体偏移。已按官方公式修复（`driver._build_node`）并以单测锚定（`test_build_xml_subtracts_parent_bounds_origin`）；bounds.origin=0 时行为不变，实弹滚动态待用户滚动列表后自然核对。同时 `isCustomClass` 对齐官方 `representedForSystemClass`（`_` 前缀归系统类）。
 
 ## 风险与开放问题
 
