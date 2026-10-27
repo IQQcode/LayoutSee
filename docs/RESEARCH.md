@@ -17,6 +17,7 @@ LayoutSee 调研内容的入口文档。调研是 PRD 的重要输入，本文�
 | 竞品运行验证 | 本地运行链路验证（内核服务、HTTP/WS 端口、SSE MCP），确认技术可行性；安全策略宽松（allow_origins=*），不适合直接暴露 | [uiautodev-run-verification.md](./research/uiauto-analysis/uiautodev-run-verification.md) |
 | 视觉基准 | ZCode 客户端视觉规范作为 LayoutSee 的视觉设计基准 | [zcode-client-design-spec.md](./research/design/zcode-client-design-spec.md) |
 | iOS 接入调研 | 内置接入 Lookin 可行（LookinServer/LookinShared 为 MIT，mac 客户端 GPL-3.0 不可嵌入）；推荐 Core 纯 Python 复刻 PeerTalk+NSKeyedArchiver 协议，约 1.5–2.5 人周；被测 App 须集成 LookinServer（Debug），抓不了任意三方 App | [ios-lookin-integration.md](./research/ios-lookin-integration.md) |
+| iOS P2 能力调研 | 3D 分层视图（web CSS 3D）/ 逐节点图片（203 按 oid 定点任务包）/ resource-id（**206 InvokeMethod 零改动读取 accessibilityIdentifier，fork 仅作备选**）三项全部可行，合计约 3.5–5 人天；关键协议事实（203 任务包结构、206 无白名单无参 selector、208 仅 UIImageView）已逐条源码核实 | [ios-lookin-p2-enhancements.md](./research/ios-lookin-p2-enhancements.md) |
 
 ## 调研结论对产品的三个影响
 
