@@ -122,6 +122,19 @@ LayoutSee 此前只能抓取 Android 布局（uiautomator 链路），设备页 
 
 交付：`repos/mac/release/mac-arm64/LayoutSee-22.7.0-arm64.dmg`（build-id=aa83936）。遗留：P2-b 全树深度抓取、P2 3D 视图、resource-id（206）、模拟器运行时重装。
 
+### 用户验收确认（2026-10-30 凌晨，模拟器工作流全链路通过）
+
+用户以模拟器（iPhone 18 Pro Max，simulator:47164）验收确认以下能力达标（验收截图见会话记录）：
+
+1. **预览区可见真实 UI 内容**：画布底图为被测 App 真实渲染画面，叠加元素线框；点选画布/树节点有高亮反馈（选中红框 + 其余线框压暗）。
+2. **布局抓取正常**：228 个节点，类名/text/frame 完整；树与画布双向联动，结构与真实界面吻合。
+3. **UI 所属类可定位**：树上直接显示 ivar 名（`_destNameLabel`、`_seasonBadgeLabel`、`_clippingView` 等）与自定义类高亮（PSDestPhotoView、PSBadgeLabel）；属性面板含 CLASS·CLASS（classChain，如 `PSVibeCardView → UIView`）、LAYOUT（Frame/Bounds/SafeArea/Position/AnchorPoint）、AUTO LAYOUT 等分组，共 32 项。
+4. 验收安装包为 **f13f316 构建**（版本 22.7.0，底图走模拟器 simctl 路径；标题栏版本 chip 此时仍为硬编码 V22.6.1，属该构建已知项）。
+
+**建议用户更新至 aa83936 构建**，新增：标题栏构建序列号 chip（git 短哈希）+ 动态版本号、真机（USB）同样可获得真实渲染底图（203 定点拉 key window 渲染图，不再依赖 simctl/模拟器）、设置页兼容状态判断去硬编码。
+
+已知小瑕疵（记 backlog，不阻塞）：AUTO LAYOUT · CONSTRAINTS 的值目前以 raw dict 形式展示（如 `{'secondItemType': 2, ...}`），后续可按 LookinAutoLayoutConstraint 结构化格式化；resource-id 仍为空（协议不含 accessibilityIdentifier，见 P2 调研 206 路线）。
+
 ### 编码崩溃轮（2026-10-25 22:2x，真机/模拟器联调第二轮）
 
 用户反馈「退出 Lookin 后点击抓取，被测 App 秒崩（用 Lookin 也一样）」。崩溃报告（`tmp/log/error.log`）定位：
