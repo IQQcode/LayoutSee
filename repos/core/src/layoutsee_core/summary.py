@@ -144,4 +144,81 @@ def _summarize(record: dict[str, object], snapshot_id: str, budget: int) -> dict
         "algorithmVersion": ALGORITHM_VERSION,
     }
 
+
+def _bound_value(bounds: object, key: str) -> float:
+    """降级路径专用：boundsNormalized 取值带防御，缺失或非法一律回落 0。"""
+    if isinstance(bounds, dict):
+        value = bounds.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    return 0.0
+
+
+def _degrade(record: dict[str, object], snapshot_id: str, budget: int) -> dict[str, object]:
+    """_summarize 异常时的兜底：降级为最简可交互清单，自身全程防御。
+
+    结构与 _summarize 保持一致（degraded=True、coverage 各键齐全、algorithmVersion 沿用）；
+    ref 缺失时用 nodeKey 兜底；任何一步失败都收敛为固定最简结构，绝不外抛。
+    """
+    text = ""
+    included = 0
+    total = 0
+    raw_chars = 0
+    try:
+        snapshot = record.get("snapshot") if isinstance(record, dict) else None
+        raw_nodes = snapshot.get("nodes") if isinstance(snapshot, dict) else None
+        nodes = [node for node in raw_nodes if isinstance(node, dict)] if isinstance(raw_nodes, list) else []
+        raw_refs = record.get("refs") if isinstance(record, dict) else None
+        ref_map = raw_refs if isinstance(raw_refs, dict) else {}
+        interactive: list[dict[str, object]] = []
+        for node in nodes:
+            try:
+                if _is_interactive(node):
+                    interactive.append(node)
+            except Exception:
+                continue
+        total = len(interactive)
+        lines: list[str] = []
+        for node in interactive:
+            try:
+                node_key = str(node.get("nodeKey") or "")
+                ref = str(ref_map.get(node_key) or node_key)  # ref 缺失时用 nodeKey 兜底
+                bounds = node.get("boundsNormalized")
+                position = (
+                    f"({_bound_value(bounds, 'left'):.2f},{_bound_value(bounds, 'top'):.2f},"
+                    f"{_bound_value(bounds, 'right'):.2f},{_bound_value(bounds, 'bottom'):.2f})"
+                )
+                lines.append(f"[{ref}] {_role(node)} {_label(node)} {position}".strip())
+            except Exception:
+                continue
+        included = len(lines)
+        text = "\n".join(lines)
+        raw_chars = len(str(record.get("xml", "") or "")) if isinstance(record, dict) else 0
+    except Exception:
+        text, included, total, raw_chars = "", 0, 0, 0
+    summary_chars = len(text)
+    return {
+        "snapshotId": snapshot_id,
+        "text": text,
+        "estimatedTokens": _estimate_tokens(text),
+        "maxTokens": budget,
+        "partial": False,
+        "degraded": True,
+        "interactiveOverBudget": False,
+        "compressionRatio": {
+            "rawChars": raw_chars,
+            "summaryChars": summary_chars,
+            "ratio": round(summary_chars / raw_chars, 4) if raw_chars else None,
+        },
+        "coverage": {
+            "totalInteractive": total,
+            "includedInteractive": included,
+            "omittedInteractive": 0,
+            "totalSemanticText": 0,
+            "includedSemanticText": 0,
+            "omittedSemanticText": 0,
+        },
+        "algorithmVersion": ALGORITHM_VERSION,
+    }
+
 # __APPEND__

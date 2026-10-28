@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
 
+from . import __version__ as PRODUCT_VERSION
 from .adb import AdbClient, find_adb
 from .audit import ActionLog
 from .contracts import CoreInfo
 from .devices import DeviceGate, DeviceRegistry
+from .ios import IOSDeviceDriver, UsbmuxClient
+from .ios.simctl import SimctlClient
 from .logcat import LogcatHub
 from .media import MediaHub
 from .mcp_catalog import ToolDispatcher
@@ -19,7 +23,16 @@ from .settings import SettingsStore, default_data_dir
 from .snapshots import CaptureCoordinator, SnapshotStore
 from .uilogs import UiLogStore
 
-PRODUCT_VERSION = "22.6.1"
+def read_build_id() -> str:
+    """构建序列号：打包时 package.mjs 在 core 可执行文件旁写 build-id（git 短哈希）；
+    开发态无该文件返回空串，Web 标题栏据此决定是否展示。"""
+    try:
+        marker = Path(sys.executable).resolve().parent / "build-id"
+        if marker.is_file():
+            return marker.read_text(encoding="utf-8").strip()[:16]
+    except OSError:
+        pass
+    return ""
 
 
 def builtin_plugins_dir() -> Path:
@@ -52,9 +65,11 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
     audit = ActionLog(data_dir / "audit")
     adb = AdbClient(resolver=settings.adb_path)
     gate = DeviceGate()
-    registry = DeviceRegistry(adb, settings, audit, gate)
+    usbmux = UsbmuxClient()
+    ios = IOSDeviceDriver(usbmux)
+    registry = DeviceRegistry(adb, settings, audit, gate, ios=ios)
     store = SnapshotStore(secret=secrets.token_bytes(32))
-    capture = CaptureCoordinator(adb, registry, store, gate)
+    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios, simctl=SimctlClient())
     plugins = PluginRegistry(data_dir / "plugins", builtin_dir=builtin_plugins_dir(), product_version=PRODUCT_VERSION)
     dispatcher = ToolDispatcher(adb=adb, registry=registry, store=store, gate=gate, capture=capture, audit=audit, plugins=plugins)
     media = MediaHub(adb)
@@ -80,6 +95,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
         media=media,
         ui_log=ui_log,
         logcat=logcat,
+        ios=ios,
     )
     server = bind_server(context, port_start)
     context.info = CoreInfo(
@@ -87,6 +103,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
         pid=os.getpid(),
         nonce=nonce,
         productVersion=PRODUCT_VERSION,
+        buildId=read_build_id(),
         apiVersion="1.0",
         snapshotSchemaVersion="1.0",
     )

@@ -195,12 +195,12 @@ export function SettingsPage({ onThemeChange }) {
                 <span>{HostBridge.kind === "shell" ? "壳版本" : "宿主"}</span>
                 <code>{HostBridge.kind === "shell" ? (appInfo?.version ?? "读取中…") : "浏览器"}</code>
                 <span>运行环境</span><code>{appInfo ? `${appInfo.platform} / ${appInfo.arch}` : "—"}</code>
-                <span>Core 版本</span><code>{coreInfo?.productVersion ?? "读取中…"}</code>
+                <span>Core 版本</span><code>{coreInfo?.productVersion ?? "读取中…"}{coreInfo?.buildId ? ` · ${coreInfo.buildId}` : ""}</code>
                 <span>API 版本</span><code>{coreInfo?.apiVersion ?? "—"}</code>
                 <span>快照 Schema</span><code>{coreInfo?.snapshotSchemaVersion ?? "—"}</code>
                 <span>兼容状态</span>
                 <span className="compat-badge">
-                  {coreInfo && coreInfo.productVersion === "22.6.1" && coreInfo.apiVersion === "1.0" && coreInfo.snapshotSchemaVersion === "1.0"
+                  {coreInfo && coreInfo.apiVersion === "1.0" && coreInfo.snapshotSchemaVersion === "1.0" && (HostBridge.kind !== "shell" || !appInfo || appInfo.version === coreInfo.productVersion)
                     ? <><StatusPill tone="success" dot>版本兼容</StatusPill></>
                     : <><StatusPill tone="danger" dot>版本不兼容</StatusPill></>}
                 </span>

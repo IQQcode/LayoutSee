@@ -17,22 +17,44 @@ Core 的响应同步写在 POST body，不走 SSE，所以一个 POST 拿一个�
 可选：--serial 指定设备，--port 指定端口，--base 指定完整根地址。
 """
 import argparse
+import ipaddress
 import json
+import socket
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 
 PORT_START = 11663
 PORT_ATTEMPTS = 10
 TIMEOUT = 8
 
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _assert_loopback(url):
+    """本脚本只服务本机 Core：协议限 http(s)，host 字面量与 DNS 解析结果都必须是回环地址。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SystemExit(f"仅允许 http(s) 协议，收到: {parsed.scheme}")
+    hostname = parsed.hostname or ""
+    if hostname.lower() not in LOOPBACK_HOSTS:
+        raise SystemExit(f"仅允许访问回环地址的 Core，收到 host: {hostname}")
+    default_port = 443 if parsed.scheme == "https" else 80
+    for info in socket.getaddrinfo(hostname, parsed.port or default_port, type=socket.SOCK_STREAM):
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_loopback:
+            raise SystemExit(f"主机 {hostname} 解析出非回环地址 {ip}，已拒绝请求")
+
 
 def _get(url):
+    _assert_loopback(url)
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def _post(url, payload):
+    _assert_loopback(url)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")

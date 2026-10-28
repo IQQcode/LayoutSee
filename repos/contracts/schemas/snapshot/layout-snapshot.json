@@ -15,7 +15,8 @@
       "required": ["packageName"],
       "properties": {
         "packageName": { "type": "string", "minLength": 1 },
-        "activity": { "type": "string" }
+        "activity": { "type": "string" },
+        "appName": { "type": "string" }
       }
     },
     "windowSizePx": { "$ref": "#/$defs/Size" },
@@ -82,7 +83,51 @@
         "clickable": { "type": "boolean" },
         "scrollable": { "type": "boolean" },
         "drawingOrder": { "type": "integer", "minimum": 0 },
-        "raw": { "type": "object", "additionalProperties": { "type": "string" } }
+        "raw": { "type": "object", "additionalProperties": { "type": "string" } },
+        "extras": { "$ref": "#/$defs/NodeExtras" }
+      }
+    },
+    "NodeExtras": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ivar", "groups"],
+      "properties": {
+        "ivar": { "type": ["string", "null"] },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/AttrGroup" } }
+      }
+    },
+    "AttrGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "sections"],
+      "properties": {
+        "identifier": { "type": "string" },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/AttrSection" } }
+      }
+    },
+    "AttrSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "attributes"],
+      "properties": {
+        "identifier": { "type": "string" },
+        "attributes": { "type": "array", "items": { "$ref": "#/$defs/AttrItem" } }
+      }
+    },
+    "AttrItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "type", "value"],
+      "properties": {
+        "identifier": { "type": "string" },
+        "type": { "type": "integer", "minimum": 0 },
+        "value": {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string" }
+          }
+        }
       }
     }
   }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AndroidLogo, ArrowClockwise, Check, Copy, CursorClick, GridFour, Info, X } from "@phosphor-icons/react";
+import { AndroidLogo, AppleLogo, ArrowClockwise, Check, Copy, CursorClick, GridFour, Info, X } from "@phosphor-icons/react";
 import { api } from "../../api/client.js";
 import { MorphGlyph, glyphs } from "../../components/MorphIcons.jsx";
 import { Banner, Button, Dialog, EmptyState, IconButton, Spinner, StatusPill, useToast } from "../../components/ui.jsx";
@@ -20,17 +20,10 @@ const STATUS_TONE = {
   error: "danger",
 };
 
-// 平台 Tab：Android 已实现；iOS / HarmonyOS 先给占位与预告，不做功能实现
+// 平台 Tab：Android / iOS 已实现真实设备表；HarmonyOS 仍是占位预告
 const PLATFORMS = [
   { id: "android", label: "Android" },
-  {
-    id: "ios",
-    label: "iOS",
-    glyph: glyphs.platformIos,
-    headline: "iOS 支持正在路上",
-    note: "设备接入 · 敬请期待",
-    detail: "V0.1 先把 Android 真机链路做扎实：发现、投屏、抓取、定位。iOS 的接入会沿用同一套快照与元素模型，正在设计中。",
-  },
+  { id: "ios", label: "iOS", glyph: glyphs.platformIos },
   {
     id: "harmony",
     label: "HarmonyOS",
@@ -40,6 +33,13 @@ const PLATFORMS = [
     detail: "HarmonyOS NEXT 的调试链路与 Android 差异较大，我们会在 Android 体验稳定后单独评估，当前还没有可交付的版本。",
   },
 ];
+
+const PLATFORM_LABELS = { android: "Android", ios: "iOS", harmony: "HarmonyOS" };
+
+// 各平台 Tab 只列本平台设备：iOS / Android 表格同构，互不混排
+function devicesForPlatform(devices, platform) {
+  return (devices ?? []).filter((item) => item.platform === platform);
+}
 
 export function DevicesPage() {
   const navigate = useNavigate();
@@ -77,7 +77,8 @@ export function DevicesPage() {
   }, [selected]);
 
   const devices = data?.items ?? [];
-  const online = devices.filter((item) => item.status === "connected");
+  const platformDevices = devicesForPlatform(devices, platform);
+  const online = platformDevices.filter((item) => item.status === "connected");
 
   const toggle = (deviceId) => {
     setSelected((current) => {
@@ -111,25 +112,28 @@ export function DevicesPage() {
       </div>
 
       <div className="platform-tabs" role="tablist" aria-label="设备平台">
-        {PLATFORMS.map((item) => (
-          <button
-            key={item.id}
-            role="tab"
-            aria-selected={platform === item.id}
-            className={platform === item.id ? "active" : ""}
-            onClick={() => setPlatform(item.id)}
-          >
-            {item.id === "android"
-              ? <AndroidLogo size={16} aria-hidden="true" />
-              : <MorphGlyph icon={item.glyph} size={16} strokeWidth={1.8} />}
-            {item.label}
-            {item.id === "android" && devices.length > 0 ? <span>{devices.length}</span> : null}
-            {item.id !== "android" ? <em>预告</em> : null}
-          </button>
-        ))}
+        {PLATFORMS.map((item) => {
+          const count = devicesForPlatform(devices, item.id).length;
+          return (
+            <button
+              key={item.id}
+              role="tab"
+              aria-selected={platform === item.id}
+              className={platform === item.id ? "active" : ""}
+              onClick={() => setPlatform(item.id)}
+            >
+              {item.id === "android"
+                ? <AndroidLogo size={16} aria-hidden="true" />
+                : <MorphGlyph icon={item.glyph} size={16} strokeWidth={1.8} />}
+              {item.label}
+              {count > 0 ? <span>{count}</span> : null}
+              {item.id === "harmony" ? <em>预告</em> : null}
+            </button>
+          );
+        })}
       </div>
 
-      {platform !== "android" ? (
+      {platform === "harmony" ? (
         <PlatformPlaceholder
           key={platform}
           platform={PLATFORMS.find((item) => item.id === platform)}
@@ -146,7 +150,10 @@ export function DevicesPage() {
 
       {loading ? (
         <div className="table-card" style={{ padding: 24 }}><Spinner label="正在枚举设备" /></div>
-      ) : devices.length === 0 ? (
+      ) : platformDevices.length === 0 ? (
+        platform === "ios" ? (
+          <IosEmptyGuide onBackToAndroid={() => setPlatform("android")} />
+        ) : (
         // scanning：仅在 ADB 可用时开启声呐扫描（找不到 adb 时并没有在扫，不该装作在扫）
         <section className={`table-card device-empty${adbMissing ? "" : " scanning"}`} style={{ padding: 20 }}>
           <EmptyState icon={AndroidLogo} title={adbMissing ? "未找到 ADB 工具链" : "还没有检测到设备"} description={adbMissing ? "请在设置中指定 adb 路径，或安装 Android platform-tools 后重新检测。" : "使用 USB 连接设备并开启开发者模式，LayoutSee 会自动发现可用设备。"}>
@@ -171,17 +178,23 @@ export function DevicesPage() {
             </div>
           </EmptyState>
         </section>
+        )
       ) : (
         <section className="table-card">
           <div className="device-table table-head" aria-hidden="true">
             <span>#</span><span>平台</span><span>序列号</span><span>型号</span><span>产品</span><span>状态</span><span className="align-right">操作</span>
           </div>
-          {devices.map((device, index) => {
+          {platformDevices.map((device, index) => {
             const statusClass = device.status === "connected" ? "" : device.status;
             return (
               <div className="device-table table-row" key={device.deviceId}>
                 <span className="muted">{index + 1}</span>
-                <span className="platform-cell"><span className="platform-icon"><AndroidLogo size={15} aria-hidden="true" /></span>Android</span>
+                <span className="platform-cell">
+                  <span className="platform-icon">
+                    {device.platform === "ios" ? <AppleLogo size={15} aria-hidden="true" /> : <AndroidLogo size={15} aria-hidden="true" />}
+                  </span>
+                  {PLATFORM_LABELS[device.platform] ?? device.platform}
+                </span>
                 <button className="serial-copy" onClick={() => copySerial(device.serial)} aria-label={`复制序列号 ${device.serial}`}>
                   {device.serial}<Copy size={13} aria-hidden="true" />
                 </button>
@@ -195,7 +208,8 @@ export function DevicesPage() {
                   {device.status !== "connected" ? (
                     <Button compact onClick={() => setDiagnosticsFor(device.deviceId)}>诊断</Button>
                   ) : (
-                    <Button compact variant="primary" icon={CursorClick} onClick={() => navigate(`/devices/${encodeURIComponent(device.deviceId)}/workbench/common`)}>
+                    // iOS 没有常用 Tab：进入工作台直接落在元素查看
+                    <Button compact variant="primary" icon={CursorClick} onClick={() => navigate(`/devices/${encodeURIComponent(device.deviceId)}/workbench/${device.platform === "ios" ? "element" : "common"}`)}>
                       控制
                     </Button>
                   )}
@@ -204,7 +218,7 @@ export function DevicesPage() {
             );
           })}
           <div className="table-footer">
-            <span>共 {devices.length} 台设备 · {online.length} 台在线</span>
+            <span>共 {platformDevices.length} 台设备 · {online.length} 台在线</span>
             <span className="muted">{data?.lastError ? `最近错误：${data.lastError}` : data?.refreshedAt ? `最近刷新：${new Date(data.refreshedAt).toLocaleTimeString()}` : ""}</span>
           </div>
         </section>
@@ -215,6 +229,33 @@ export function DevicesPage() {
 
       <DiagnosticsDialog deviceId={diagnosticsFor} onClose={() => setDiagnosticsFor(null)} />
     </main>
+  );
+}
+
+// iOS 空态：LookinServer 集成三步引导（iOS 只能抓「集成了 LookinServer 且前台运行」的自家 App）
+function IosEmptyGuide({ onBackToAndroid }) {
+  return (
+    <section className="table-card device-empty" style={{ padding: 20 }}>
+      <EmptyState icon={AppleLogo} title="还没有检测到 iOS 设备" description="被测 App 集成 LookinServer 后，USB 连接真机或运行模拟器即可自动出现。">
+        <div className="setup-guide">
+          <div className="guide-step">
+            <span className="step-no" aria-hidden="true">1</span>
+            <div><b>集成 LookinServer（仅 Debug 配置）</b><p>在被测 App 中通过 CocoaPods 或 SPM 集成 LookinServer，只在 Debug 构建启用。</p></div>
+          </div>
+          <div className="guide-step">
+            <span className="step-no" aria-hidden="true">2</span>
+            <div><b>真机或模拟器运行该 App 并保持前台</b><p>LayoutSee 只抓取集成了 LookinServer 且处于前台的应用；模拟器无需 USB，真机用数据线连接 Mac。</p></div>
+          </div>
+          <div className="guide-step">
+            <span className="step-no" aria-hidden="true">3</span>
+            <div><b>自动出现在本列表</b><p>注意 LookinServer 同一时刻只接受一个客户端：若开着 Lookin 官方客户端，请先退出它，设备才会出现在这里。</p></div>
+          </div>
+          <div style={{ marginTop: 4 }}>
+            <Button onClick={onBackToAndroid}>返回 Android</Button>
+          </div>
+        </div>
+      </EmptyState>
+    </section>
   );
 }
 
