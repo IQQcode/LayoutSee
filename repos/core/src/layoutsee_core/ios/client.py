@@ -25,6 +25,12 @@ REQUEST_HIERARCHY = 202
 REQUEST_HIERARCHY_DETAILS = 203
 REQUEST_ALL_ATTR_GROUPS = 210
 
+# LookinStaticAsyncUpdateTaskType：NoScreenshot=0 / Solo=1 / Group=2
+SCREENSHOT_TASK_GROUP = 2
+SCREENSHOT_TASK_SOLO = 1
+# LookinDetailUpdateTaskAttrRequest：Automatic=0 / Need=1 / NotNeed=2
+ATTR_REQUEST_NOT_NEED = 2
+
 SUPPORTED_SERVER_VERSION = 7
 PROBE_TIMEOUT = 0.5
 REQUEST_TIMEOUT = 5.0
@@ -135,6 +141,57 @@ class LookinClient:
             raise
         data = attach.get("0")
         return {"attrGroups": data if isinstance(data, list) else [], "warnings": warnings}
+
+    def fetch_display_item_screenshot(self, oid: int, screenshot_type: int = SCREENSHOT_TASK_GROUP) -> bytes | None:
+        """203 定点拉单节点渲染图：group（含子树）或 solo。返回 PNG 字节，失败返回 None。
+
+        请求编码按 LookinStaticAsyncUpdateTask/Package.m 校准：oid 是
+        decodeObjectForKey 读的 NSNumber → 必须引用形态（scalar_keys_by_reference）；
+        响应每包一帧 LookinDisplayItemDetail 列表，groupScreenshot 直接是 PNG NSData，
+        图层已释放时 detail.failureCode=-1。
+        """
+        task = archiver.KeyedObject(
+            fields={
+                "oid": int(oid),
+                "taskType": int(screenshot_type),
+                "clientReadableVersion": "1.2.8",
+                "attrRequest": ATTR_REQUEST_NOT_NEED,
+                "needBasisVisualInfo": False,
+                "needSubitems": False,
+            },
+            class_name="LookinStaticAsyncUpdateTask",
+            class_chain=["LookinStaticAsyncUpdateTask", "NSObject"],
+            scalar_keys_by_reference=("oid",),
+        )
+        payload = [archiver.KeyedObject(
+            fields={"tasks": [task]},
+            class_name="LookinStaticAsyncUpdateTasksPackage",
+            class_chain=["LookinStaticAsyncUpdateTasksPackage", "NSObject"],
+        )]
+        tag = self._next_tag()
+        try:
+            attach, _ = self._request(REQUEST_HIERARCHY_DETAILS, timeout=REQUEST_TIMEOUT, data=payload, tag=tag)
+            batches = [attach.get("0")]
+            total = as_int(attach.get("dataTotalCount")) or 1
+            received = len(batches[0]) if isinstance(batches[0], list) else 0
+            while 0 < received < total and len(batches) < MAX_BATCHES:
+                attach, _ = self._read_response(REQUEST_HIERARCHY_DETAILS, tag, REQUEST_TIMEOUT)
+                batch = attach.get("0")
+                if isinstance(batch, list):
+                    batches.append(batch)
+                    received += len(batch)
+        except CoreError:
+            return None
+        for batch in batches:
+            for detail in batch if isinstance(batch, list) else []:
+                if not isinstance(detail, dict):
+                    continue
+                if as_int(detail.get("failureCode")) == -1:
+                    return None
+                image = detail.get("groupScreenshot" if screenshot_type == SCREENSHOT_TASK_GROUP else "soloScreenshot")
+                if isinstance(image, (bytes, bytearray)) and image:
+                    return bytes(image)
+        return None
 
     def hierarchy_details(self) -> dict[str, object]:
         """分批读取 HierarchyDetails 并宽松聚合（attrGroups 按 oid 归并、图片字段丢弃）。"""

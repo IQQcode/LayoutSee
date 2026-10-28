@@ -20,6 +20,7 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .window-titlebar .brand-lockup { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
 .brand-mark { display: block; width: 24px; height: 24px; border-radius: 5px; }
 .version-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--ls-color-border-default); color: var(--ls-color-text-tertiary); font-size: 11px; font-weight: 500; }
+.build-chip { padding: 1px 7px; border-radius: 999px; border: 1px dashed var(--ls-color-border-default); color: var(--ls-color-text-tertiary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .window-titlebar .top-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; -webkit-app-region: no-drag; }
 
 .app-body { display: grid; grid-template-columns: var(--ls-sidebar-width) minmax(0, 1fr); min-height: 0; }

@@ -263,6 +263,9 @@ class IOSDeviceDriver:
             app = flatten_app_info(app_payload)
             app["port"] = port
             scale = float(app.get("screenScale") or 1)
+            # key window 的 group 渲染图 = 全 App 真实内容（drawViewHierarchyInRect 原生分辨率），
+            # 模拟器/真机通用且与层级同步，作为画布底图（模拟器下 simctl 仅作回退）
+            screenshot = self._fetch_window_screenshot(client, display_items, warnings)
             attr_groups, attr_warnings = self._collect_attr_groups(client, display_items)
             warnings.extend(attr_warnings)
             warnings.extend(info.get("warnings") or [])
@@ -271,6 +274,7 @@ class IOSDeviceDriver:
             result: dict[str, object] = {
                 "xml": xml,
                 "extras": extras_by_key,
+                "screenshot": screenshot,
                 "window_size": {
                     "width": round_px(float(app.get("screenWidth") or 0) * scale),
                     "height": round_px(float(app.get("screenHeight") or 0) * scale),
@@ -287,6 +291,28 @@ class IOSDeviceDriver:
                     selected[0].stream.close()
                 except OSError:
                     pass
+
+    def _fetch_window_screenshot(
+        self,
+        client: LookinClient,
+        display_items: list[object],
+        warnings: list[str],
+    ) -> bytes | None:
+        """203 拉 key window 的 group 渲染图（真实内容底图）；失败静默降级返回 None。"""
+        if not isinstance(display_items, list) or not display_items:
+            return None
+        key_window = next(
+            (item for item in display_items if isinstance(item, dict) and item.get("representedAsKeyWindow") is True),
+            display_items[0],
+        )
+        layer = key_window.get("layerObject") if isinstance(key_window.get("layerObject"), dict) else {}
+        window_oid = as_int(layer.get("oid"))
+        if window_oid is None:
+            return None
+        screenshot = client.fetch_display_item_screenshot(window_oid)
+        if screenshot is None:
+            warnings.append("窗口渲染图（203）拉取失败，底图可能缺失。")
+        return screenshot
 
     def _collect_attr_groups(
         self,

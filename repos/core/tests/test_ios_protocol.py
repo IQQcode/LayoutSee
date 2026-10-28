@@ -668,6 +668,78 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(nodes[1]["text"], "你好")
         self.assertTrue(nodes[1]["enabled"])
 
+    def test_capture_without_layer_object_skips_screenshot_fetch(self) -> None:
+        """层级无 layerObject（fixture 简化形态）时不发 203，screenshot 为 None。"""
+        frames = (
+            frame_bytes(200, 1, response_attachment(server_version=7))
+            + frame_bytes(201, 2, response_attachment(data=app_info_payload(), background=False))
+            + frame_bytes(202, 3, response_attachment(data=hierarchy_payload([make_window()])))
+            + frame_bytes(210, 4, response_attachment(data=[]))
+            + frame_bytes(210, 5, response_attachment(data=groups_by_oid()[2]))
+        )
+        ios_driver = driver.IOSDeviceDriver(StubUsbmux([FakeStream(frames)]))
+        result = ios_driver.capture(UDID)
+        self.assertIsNone(result["screenshot"])
+
+    def test_capture_attaches_window_render_image(self) -> None:
+        """key window 的 203 group 渲染图 → result["screenshot"]（真机/模拟器通用底图）。"""
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+        window = make_window()
+        window["representedAsKeyWindow"] = True
+        window["layerObject"] = {"oid": 11, "classChainList": ["CALayer"], "_classes": ["LookinObject", "NSObject"]}
+        frames = (
+            frame_bytes(200, 1, response_attachment(server_version=7))
+            + frame_bytes(201, 2, response_attachment(data=app_info_payload(), background=False))
+            + frame_bytes(202, 3, response_attachment(data=hierarchy_payload([window])))
+            + frame_bytes(203, 4, response_attachment(data=[{"displayItemOid": 11, "groupScreenshot": png, "failureCode": 0}], total=1, current=1))
+            + frame_bytes(210, 5, response_attachment(data=[]))  # window layer oid=11 无属性组
+            + frame_bytes(210, 6, response_attachment(data=groups_by_oid()[2]))  # label oid=2
+        )
+        ios_driver = driver.IOSDeviceDriver(StubUsbmux([FakeStream(frames)]))
+        result = ios_driver.capture(UDID)
+        self.assertEqual(result["screenshot"], png)
+        self.assertEqual(result["warnings"], [])
+
+    def test_client_fetch_display_item_screenshot(self) -> None:
+        """203 请求编码（oid 引用形态 + 类身份）与单帧响应解码。"""
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
+        frames = frame_bytes(
+            203,
+            1,
+            response_attachment(data=[{"displayItemOid": 7, "groupScreenshot": png, "failureCode": 0}], total=1, current=1),
+        )
+        lookin_client = client.LookinClient(FakeStream(frames))
+        self.assertEqual(lookin_client.fetch_display_item_screenshot(7), png)
+
+    def test_client_fetch_screenshot_failure_code_returns_none(self) -> None:
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
+        frames = frame_bytes(
+            203,
+            1,
+            response_attachment(data=[{"displayItemOid": 7, "groupScreenshot": png, "failureCode": -1}], total=1, current=1),
+        )
+        lookin_client = client.LookinClient(FakeStream(frames))
+        self.assertIsNone(lookin_client.fetch_display_item_screenshot(7))
+
+    def test_client_203_request_encodes_class_identity(self) -> None:
+        """203 请求载荷必须是 LookinStaticAsyncUpdateTasksPackage/Task 类实例（服务器按类解码），
+        且 oid 走引用形态（decodeObjectForKey 只认引用）。"""
+        stream = FakeStream(b"")
+        lookin_client = client.LookinClient(stream)
+        try:
+            lookin_client.fetch_display_item_screenshot(7)
+        except Exception:
+            pass  # FakeStream 无响应帧，读取阶段失败可忽略——只校验请求编码
+        raw = bytes(stream.sent)
+        body = raw[peertalk.PT_HEADER.size:]  # 剥 16 字节 PeerTalk 帧头
+        request_payload, _ = archiver.unarchive(body)
+        packages = request_payload["0"]
+        self.assertEqual(packages[0]["_classes"][-2], "LookinStaticAsyncUpdateTasksPackage")
+        task = packages[0]["tasks"][0]
+        self.assertEqual(task["_classes"][-2], "LookinStaticAsyncUpdateTask")
+        self.assertEqual(task["oid"], 7)
+        self.assertEqual(task["taskType"], 2)
+
 
 def sim_app_info() -> dict[str, object]:
     """模拟器 app_info 响应的 data 字段（真实数字键形态，前台 PackSmart）。"""

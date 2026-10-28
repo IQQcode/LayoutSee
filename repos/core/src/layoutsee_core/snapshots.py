@@ -355,8 +355,8 @@ class CaptureCoordinator:
     def _capture_ios(self, device_id: str, descriptor: dict[str, object]) -> dict[str, object]:
         """iOS 抓取：Lookin XML → 既有 normalize_nodes → 与 Android 同构的 record。
 
-        extras（属性分组 + ivar 名）按 nodeKey 回填到节点；模拟器额外用 simctl 截
-        全屏 PNG 作画布底图（真机待 pymobiledevice3，暂线框渲染）。
+        extras（属性分组 + ivar 名）按 nodeKey 回填到节点；底图优先 203 拉的 key
+        window 真实渲染图（模拟器/真机通用），失败时模拟器回退 simctl、真机降级线框。
         """
         if self.ios is None:
             raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取服务未装配。")
@@ -373,7 +373,7 @@ class CaptureCoordinator:
                 node["extras"] = extra
 
         warnings = [str(item) for item in (result.get("warnings") or [])]
-        png = self._ios_screenshot(serial, warnings)
+        png = self._ios_screenshot(serial, result.get("screenshot"), warnings)
 
         app = result.get("app")
         app_map = dict(app) if isinstance(app, dict) else {}
@@ -421,10 +421,13 @@ class CaptureCoordinator:
             "ref_token": ref_token,
         }
 
-    def _ios_screenshot(self, serial: str, warnings: list[str]) -> bytes | None:
-        """模拟器截图底图：单 booted 模拟器时 simctl 全屏 PNG，其余降级线框并提示。"""
+    def _ios_screenshot(self, serial: str, driver_png: object, warnings: list[str]) -> bytes | None:
+        """画布底图：优先 driver 经 203 拉的 Lookin 窗口渲染图（模拟器/真机通用），
+        失败时模拟器回退 simctl 全屏 PNG，真机降级线框并提示。"""
+        if isinstance(driver_png, (bytes, bytearray)) and driver_png:
+            return bytes(driver_png)
         if not serial.startswith(IOS_SIMULATOR_PREFIX):
-            warnings.append("iOS 真机截图暂未支持（规划 pymobiledevice3），将以线框渲染。")
+            warnings.append("iOS 真机渲染图拉取失败，将以线框渲染。")
             return None
         if self.simctl is None:
             warnings.append("模拟器截图服务未装配，将以线框渲染。")

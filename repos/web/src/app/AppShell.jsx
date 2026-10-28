@@ -68,7 +68,8 @@ export function AppShell() {
         <div className="brand-lockup">
           <img className="brand-mark" src="/layoutsee-icon-192.png" alt="" aria-hidden="true" />
           <span>LayoutSee</span>
-          <span className="version-chip">V22.6.1</span>
+          <span className="version-chip">V{coreInfo?.productVersion ?? "22.7.0"}</span>
+          {coreInfo?.buildId ? <span className="build-chip">{coreInfo.buildId}</span> : null}
         </div>
         <div className="top-actions">
           <IconButton

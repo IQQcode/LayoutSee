@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -22,6 +23,18 @@ from .snapshots import CaptureCoordinator, SnapshotStore
 from .uilogs import UiLogStore
 
 PRODUCT_VERSION = "22.7.0"
+
+
+def read_build_id() -> str:
+    """构建序列号：打包时 package.mjs 在 core 可执行文件旁写 build-id（git 短哈希）；
+    开发态无该文件返回空串，Web 标题栏据此决定是否展示。"""
+    try:
+        marker = Path(sys.executable).resolve().parent / "build-id"
+        if marker.is_file():
+            return marker.read_text(encoding="utf-8").strip()[:16]
+    except OSError:
+        pass
+    return ""
 
 
 def builtin_plugins_dir() -> Path:
@@ -92,6 +105,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
         pid=os.getpid(),
         nonce=nonce,
         productVersion=PRODUCT_VERSION,
+        buildId=read_build_id(),
         apiVersion="1.0",
         snapshotSchemaVersion="1.0",
     )

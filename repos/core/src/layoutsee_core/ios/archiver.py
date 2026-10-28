@@ -56,8 +56,29 @@ RECT_STRING_PATTERN = re.compile(
 )
 
 
+class KeyedObject:
+    """标注：此 dict 应编码为指定 $class 的 keyed 对象（而非 NSDictionary）。
+
+    用于载荷里嵌套 LookinShared 自定义类（如 LookinStaticAsyncUpdateTasksPackage），
+    服务器按具体类解码；标量键默认内联（对齐 Apple encodeInteger 行为），
+    scalar_keys_by_reference 中的键强制引用形态（decodeObjectForKey: 只认引用）。
+    """
+
+    def __init__(
+        self,
+        fields: dict[str, object],
+        class_name: str,
+        class_chain: list[str] | None = None,
+        scalar_keys_by_reference: tuple[str, ...] = (),
+    ) -> None:
+        self.fields = fields
+        self.class_name = class_name
+        self.class_chain = class_chain
+        self.scalar_keys_by_reference = scalar_keys_by_reference
+
+
 class _Archiver:
-    """最小化 NSKeyedArchiver 编码器：支持 None/bool/int/float/str/bytes/list/tuple/dict（不支持循环引用）。"""
+    """最小化 NSKeyedArchiver 编码器：支持 None/bool/int/float/str/bytes/list/tuple/dict/KeyedObject（不支持循环引用）。"""
 
     def __init__(self) -> None:
         self.objects: list[object] = [NULL_REF]
@@ -76,9 +97,29 @@ class _Archiver:
             self._class_refs[class_name] = ref
         return ref
 
+    def keyed_object_ref(self, value: KeyedObject) -> UID:
+        chain = list(value.class_chain) if value.class_chain else [value.class_name, "NSObject"]
+        encoded_fields: dict[str, object] = {}
+        for key, item in value.fields.items():
+            by_reference = (
+                str(key) in value.scalar_keys_by_reference
+                or isinstance(item, (str, bytes, bytearray, dict, list, tuple, KeyedObject))
+                or item is None
+            )
+            if isinstance(item, (bool, int, float)) and not by_reference:
+                encoded_fields[str(key)] = item
+            else:
+                encoded_fields[str(key)] = self.reference(item)
+        return self.new_object({
+            "$class": self.class_ref(value.class_name, chain),
+            **encoded_fields,
+        })
+
     def reference(self, value: object) -> UID:
         if value is None:
             return UID(0)  # 约定 $objects[0]="$null"
+        if isinstance(value, KeyedObject):
+            return self.keyed_object_ref(value)
         if isinstance(value, (str, bool, int, float)):
             key = (type(value), value)  # type 区分 bool 与 int（True == 1）
             ref = self._atom_refs.get(key)
@@ -125,18 +166,7 @@ def encode_keyed_object(
     AllAttrGroups 的 NSNumber(oid) 载荷被服务器解为 null 的根因）。
     """
     archiver = _Archiver()
-    chain = list(class_chain) if class_chain else [class_name, "NSObject"]
-    encoded_fields: dict[str, object] = {}
-    for key, value in fields.items():
-        by_reference = str(key) in scalar_keys_by_reference or isinstance(value, (str, bytes, bytearray, dict, list, tuple)) or value is None
-        if isinstance(value, (bool, int, float)) and not by_reference:
-            encoded_fields[str(key)] = value
-        else:
-            encoded_fields[str(key)] = archiver.reference(value)
-    root = archiver.new_object({
-        "$class": archiver.class_ref(class_name, chain),
-        **encoded_fields,
-    })
+    root = archiver.reference(KeyedObject(fields, class_name, class_chain, scalar_keys_by_reference))
     container = {
         "$version": ARCHIVER_VERSION,
         "$archiver": ARCHIVER_NAME,
