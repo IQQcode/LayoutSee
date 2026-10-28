@@ -110,6 +110,18 @@ LayoutSee 此前只能抓取 Android 布局（uiautomator 链路），设备页 
 
 遗留：3D 分层视图（web CSS 3D 可做）、逐节点图片（needImages/208，3-10s 显式重抓取）、真机复验 + pymobiledevice3 截图、resource-id（LookinServer 协议无 accessibilityIdentifier，需 fork 或 InvokeMethod(206)）。
 
+### 画布真实内容底图 + 构建序列号（2026-10-29，用户真机验收反馈轮）
+
+用户以真机（iPhone，iOS 27.2）验收 22.7.0 首包：树 ivar/坐标/属性面板全部生效，但画布仍是纯线框——**simctl 截图只覆盖模拟器，真机走降级**；用户预期「把真实内容放过去」。同时要求标题栏加构建序列号区分包。本轮改动：
+
+1. **画布底图改 203 定点拉 key window 真实渲染图（模拟器/真机通用，P2-b 的单 task 最小实现）**：`client.fetch_display_item_screenshot(oid)` 发单个 LookinStaticAsyncUpdateTasksPackage（taskType=Group、attrRequest=NotNeed、clientReadableVersion=1.2.8），响应 `LookinDisplayItemDetail.groupScreenshot` 即 `drawViewHierarchyInRect` 原生分辨率 PNG（真机实测 1290×2796、587KB）。`driver._fetch_window_screenshot` 取 `representedAsKeyWindow` 项的 layerObject.oid（回落首窗口）拉图，snapshots 层优先用之，模拟器 simctl 降为回退、真机失败降线框。效果与 Lookin 2D 画布同源（Lookin 官方同样在单节点重载时走 203）。
+2. **archiver 新增 `KeyedObject` 嵌套类身份编码**：203 请求载荷需要 NSArray 里嵌 LookinStaticAsyncUpdateTasksPackage/LookinStaticAsyncUpdateTask 类实例（服务器按类解码），原编码器把 dict 一律编成 NSDictionary。`KeyedObject(fields, class_name, class_chain, scalar_keys_by_reference)` 支持任意层级嵌套自定义类；`encode_keyed_object` 重构为复用同一路径（行为不变）。**oid 键必须引用形态**（decodeObjectForKey 只认引用）——与 b4eb0a4/ffc9caa 同族的第三个形态坑。
+3. **构建序列号 buildId 全链路**：契约 `info.json` 增 `buildId`（可选 string）+ 三处生成物再生成；`bootstrap.read_build_id()` 读 core 可执行文件旁的 `build-id` 文件；`package.mjs` 暂存阶段写入 `git rev-parse --short HEAD` 并进 artifact-manifest；Web 标题栏 `V22.7.0` chip 旁展示 build-id chip（动态读 `/api/v1/info`，替换原硬编码 V22.6.1）。设置页「版本兼容」判断改壳/核版本比对（去掉硬编码 22.6.1）。
+4. **验证**：test:core 174 全绿（+4：203 客户端金样/failureCode=-1/请求类身份与 oid 引用形态断言/无 layerObject 跳过）、web 18、契约一致、lint；真机实弹全链路（dev core + HTTP）：渲染图 1290×2796、坐标正确、extras 228/228、ivar 126、warnings 空。
+5. **环境备注**：本机 iOS 27.0 模拟器运行时在 10-29 凌晨从 simctl 消失（Xcode 27.1，疑似用户清理/升级，设备目录仅剩 device_set.plist）——本轮真机验证不受影响，模拟器需用户在 Xcode 里重新下载运行时。
+
+交付：`repos/mac/release/mac-arm64/LayoutSee-22.7.0-arm64.dmg`（build-id=aa83936）。遗留：P2-b 全树深度抓取、P2 3D 视图、resource-id（206）、模拟器运行时重装。
+
 ### 编码崩溃轮（2026-10-25 22:2x，真机/模拟器联调第二轮）
 
 用户反馈「退出 Lookin 后点击抓取，被测 App 秒崩（用 Lookin 也一样）」。崩溃报告（`tmp/log/error.log`）定位：
