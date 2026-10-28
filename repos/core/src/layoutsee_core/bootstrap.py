@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import __version__ as PRODUCT_VERSION
 from .adb import AdbClient, find_adb
 from .audit import ActionLog
 from .contracts import CoreInfo
@@ -21,9 +22,6 @@ from .server import DEFAULT_PORT_START, CoreContext, bind_server, derive_session
 from .settings import SettingsStore, default_data_dir
 from .snapshots import CaptureCoordinator, SnapshotStore
 from .uilogs import UiLogStore
-
-PRODUCT_VERSION = "22.7.0"
-
 
 def read_build_id() -> str:
     """构建序列号：打包时 package.mjs 在 core 可执行文件旁写 build-id（git 短哈希）；

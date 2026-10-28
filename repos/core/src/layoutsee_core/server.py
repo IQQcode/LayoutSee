@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import __version__ as PRODUCT_VERSION
 from .contracts import CoreInfo
 from .errors import CoreError
 from .mcp_catalog import ToolDispatcher, catalog
@@ -969,7 +970,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 response["result"] = {
                     "protocolVersion": str(params.get("protocolVersion") or "2024-11-05"),
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "layoutsee", "version": "22.6.1"},
+                    "serverInfo": {"name": "layoutsee", "version": PRODUCT_VERSION},
                 }
             elif method == "notifications/initialized":
                 self._json(HTTPStatus.ACCEPTED, {})

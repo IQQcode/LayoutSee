@@ -1,6 +1,6 @@
 {
   "name": "layoutsee-workspace",
-  "version": "22.6.1",
+  "version": "22.7.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -17,7 +17,8 @@
     "test:mac": "npm --workspace @layoutsee/mac test",
     "test:web": "npm --workspace @layoutsee/web test",
     "test:unit": "npm run test:contracts && npm run test:mac && npm run test:web && npm run test:core",
-    "lint": "npm --workspace @layoutsee/contracts run lint && npm --workspace @layoutsee/web run lint && npm --workspace @layoutsee/mac run lint",
+    "lint": "npm run version:check && npm --workspace @layoutsee/contracts run lint && npm --workspace @layoutsee/web run lint && npm --workspace @layoutsee/mac run lint",
+    "version:check": "node scripts/check-version.mjs",
     "typecheck": "npm --workspace @layoutsee/contracts run typecheck && npm --workspace @layoutsee/web run typecheck && npm --workspace @layoutsee/mac run typecheck",
     "build:all": "npm run contracts:check && npm --workspace @layoutsee/web run build && npm --workspace @layoutsee/mac run build",
     "package:mac": "npm --workspace @layoutsee/mac run package:mac",
