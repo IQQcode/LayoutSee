@@ -380,7 +380,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
       <div className="device-viewport">
         <div
           ref={frameRef}
-          className={`device-frame ${snapshotView ? "snapshot" : ""} ${dims.width > dims.height ? "landscape" : ""}`}
+          className={`device-frame ${snapshotView ? "snapshot" : ""} ${dims.width > dims.height ? "landscape" : ""} ${snapshotView && highlights && Object.keys(highlights).length ? "has-selection" : ""}`}
           style={{ width: frameSize?.width ?? undefined, height: frameSize?.height ?? undefined, aspectRatio: frameSize ? undefined : renderAspect, touchAction: "none" }}
           tabIndex={0}
           role="img"

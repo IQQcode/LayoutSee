@@ -21,7 +21,7 @@ from .settings import SettingsStore, default_data_dir
 from .snapshots import CaptureCoordinator, SnapshotStore
 from .uilogs import UiLogStore
 
-PRODUCT_VERSION = "22.6.1"
+PRODUCT_VERSION = "22.7.0"
 
 
 def builtin_plugins_dir() -> Path:

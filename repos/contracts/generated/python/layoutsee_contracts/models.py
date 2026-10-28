@@ -1,5 +1,5 @@
 # 此文件由 contracts:generate 自动生成，禁止手改。
-# schema sha256: b2e98803c6abea01691696b36db16b702a8c62fa665b7bd62e89a02ff0fd4593
+# schema sha256: 43076e556e9e1d26c95df2307ec6b441fa6d14349a193aec91a22da1829ead35
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class CoreInfo(BaseModel):
     port: int
     pid: int
     nonce: str
-    productVersion: Literal["22.6.1"]
+    productVersion: Literal["22.7.0"]
     apiVersion: Literal["1.0"]
     snapshotSchemaVersion: Literal["1.0"]
 
