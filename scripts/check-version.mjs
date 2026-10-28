@@ -1,8 +1,8 @@
 // 版本号一致性门禁：唯一事实源 = 根 package.json 的 version。
 // 覆盖 INDEX.md 原人工清单的全部位置；插件 engines 兼容区间只校验根版本落在区间内。
 // 运行：npm run version:check（已接入 lint 链）。
-import { readFile } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,8 +75,26 @@ if (!new RegExp(`productVersion: "${expected}"`).test(handshake)) {
   problems.push(`repos/mac/src/shared/handshake.mjs：productVersion ≠ ${expected}`);
 }
 
+// web 源码禁止硬编码版本 chip（必须从 /api/v1/info 动态读取）——两个标题栏都吃过这个亏
+async function walkJsx(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) files.push(...(await walkJsx(full)));
+    else if (/\.(jsx|js|mjs)$/.test(entry.name)) files.push(full);
+  }
+  return files;
+}
+for (const file of await walkJsx(resolve(root, "repos/web/src"))) {
+  const text = await readFile(file, "utf8");
+  const hardcoded = text.match(/version-chip[^>]*>\s*V?\d+\.\d+/);
+  if (hardcoded) {
+    problems.push(`${relative(root, file)}：version-chip 硬编码了版本字面量（${hardcoded[0]}），必须动态读取 coreInfo`);
+  }
+}
+
 // 内置插件 engines：根版本必须落在兼容区间内（区间本身允许滞后下界）
-const { readdir } = await import("node:fs/promises");
 const pluginDirs = await readdir(resolve(root, "repos/plugins"), { withFileTypes: true });
 for (const entry of pluginDirs.filter((item) => item.isDirectory())) {
   try {
