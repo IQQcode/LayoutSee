@@ -8,13 +8,14 @@ Core 的响应同步写在 POST body，不走 SSE，所以一个 POST 拿一个�
 仅依赖 Python 标准库。
 
 用法：
+    python3 mcp_call.py --devices                     仅列设备（含各设备 deviceId）
     python3 mcp_call.py --list                        列出工具
-    python3 mcp_call.py --devices                     仅列设备
     python3 mcp_call.py capture_layout                调用无参工具
     python3 mcp_call.py get_layout --args '{"snapshotId":"x"}'
     python3 mcp_call.py get_current_app --serial RFCY41B0EVZ
 
-可选：--serial 指定设备，--port 指定端口，--base 指定完整根地址。
+可选：--serial 指定设备（Android 为 adb serial，iOS 真机为 udid、模拟器为 simulator:<port>），
+--port 指定端口，--base 指定完整根地址。
 """
 import argparse
 import ipaddress
@@ -86,7 +87,7 @@ def list_devices(base):
 def resolve_device(base, serial):
     items = list_devices(base)
     if not items:
-        raise SystemExit("当前无已连设备，请用 adb devices 确认。")
+        raise SystemExit("当前无已连设备。请确认桌面应用已打开且设备已连接（Android 需 adb 可见，iOS 需被测 App 集成 LookinServer 且前台运行）。")
     if serial:
         for item in items:
             if item.get("serial") == serial:
