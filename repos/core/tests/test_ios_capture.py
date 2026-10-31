@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import secrets
 import tempfile
@@ -147,6 +148,7 @@ class IOSCaptureTest(unittest.TestCase):
         self.context.adb = self.adb
         self.context.registry.adb = self.adb
         self.context.capture.adb = self.adb  # 抓取协调器持有独立的 adb 引用，需一并替换
+        self.context.dispatcher.adb = self.adb  # MCP dispatcher 同样持有独立 adb 引用
         self.context.registry.refresh()
         thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         thread.start()
@@ -180,6 +182,15 @@ class IOSCaptureTest(unittest.TestCase):
         status, payload = self._post(f"/api/v1/devices/{IOS_DEVICE_ID}/snapshots")
         self.assertEqual(status, 200)
         return str(payload["data"]["snapshotId"])
+
+    def _mcp_call(self, device_id: str, tool_name: str, arguments: dict[str, object] | None = None) -> tuple[bool, dict]:
+        """tools/call 直连：返回 (isError, 解析后的 text payload)；CoreError 走 isError=True 携带 error.code。"""
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": tool_name, "arguments": arguments or {}}}
+        status, payload = self._request("POST", f"/mcp/{device_id}/message", body)
+        self.assertEqual(status, 200)
+        result = payload["result"]
+        return bool(result["isError"]), json.loads(result["content"][0]["text"])
 
     def test_devices_list_contains_ios_entry(self) -> None:
         status, payload = self._get("/api/v1/devices")
@@ -369,6 +380,64 @@ class IOSCaptureTest(unittest.TestCase):
         status, payload = self._get(f"/api/v1/devices/{ANDROID_DEVICE_ID}/media/capabilities")
         self.assertEqual(status, 200)
         self.assertIn(payload["data"]["mode"], ("scrcpy", "screenshot"))
+
+    def test_mcp_ios_device_info_after_capture(self) -> None:
+        self._capture_ios()
+        is_error, data = self._mcp_call(IOS_DEVICE_ID, "get_device_info")
+        self.assertFalse(is_error)
+        self.assertEqual(data["platform"], "ios")
+        self.assertEqual(data["serial"], "udid-1")
+        self.assertEqual(data["windowSizePx"], {"width": 1170, "height": 2532})
+        self.assertIsNone(data["density"])
+        self.assertEqual(data["orientation"], "portrait")
+        self.assertTrue(data["readonly"])
+
+    def test_mcp_ios_device_info_before_capture_is_stale(self) -> None:
+        is_error, data = self._mcp_call(IOS_DEVICE_ID, "get_device_info")
+        self.assertTrue(is_error)
+        self.assertEqual(data["error"]["code"], "SNAPSHOT_STALE")
+
+    def test_mcp_ios_current_app_before_and_after_capture(self) -> None:
+        is_error, data = self._mcp_call(IOS_DEVICE_ID, "get_current_app")
+        self.assertTrue(is_error)
+        self.assertEqual(data["error"]["code"], "LOOKIN_APP_NOT_FOUND")
+        self._capture_ios()
+        is_error, data = self._mcp_call(IOS_DEVICE_ID, "get_current_app")
+        self.assertFalse(is_error)
+        self.assertEqual(data["packageName"], "com.qmui.lookindemo")
+
+    def test_mcp_ios_screenshot_requires_render_png(self) -> None:
+        """StubIOSDriver 无 screenshot 键：真机快照 png 为 None → MEDIA_UNAVAILABLE。"""
+        self._capture_ios()
+        is_error, data = self._mcp_call(IOS_DEVICE_ID, "get_screenshot")
+        self.assertTrue(is_error)
+        self.assertEqual(data["error"]["code"], "MEDIA_UNAVAILABLE")
+
+    def test_mcp_ios_write_tools_blocked_readonly(self) -> None:
+        for name, arguments in (
+            ("tap", {"x": 10, "y": 20}),
+            ("swipe", {"fromX": 0, "fromY": 0, "toX": 100, "toY": 100}),
+            ("input_text", {"text": "hello"}),
+        ):
+            is_error, data = self._mcp_call(IOS_DEVICE_ID, name, arguments)
+            self.assertTrue(is_error)
+            self.assertEqual(data["error"]["code"], "READ_ONLY_MODE")
+
+    def test_mcp_android_read_tools_regression(self) -> None:
+        is_error, data = self._mcp_call(ANDROID_DEVICE_ID, "get_device_info")
+        self.assertFalse(is_error)
+        self.assertEqual(data["platform"], "android")
+        self.assertEqual(data["windowSizePx"], {"width": 1080, "height": 2400})
+        self.assertEqual(data["density"], 420)
+        self.assertEqual(data["orientation"], "portrait")
+        self.assertFalse(data["readonly"])
+        is_error, data = self._mcp_call(ANDROID_DEVICE_ID, "get_current_app")
+        self.assertFalse(is_error)
+        self.assertEqual(data, {"packageName": "com.example", "activity": "MainActivity"})
+        is_error, data = self._mcp_call(ANDROID_DEVICE_ID, "get_screenshot")
+        self.assertFalse(is_error)
+        self.assertEqual(data["bytes"], len(tiny_png(1080, 2400)))
+        self.assertEqual(base64.b64decode(data["base64"]), tiny_png(1080, 2400))
 
 
 if __name__ == "__main__":
