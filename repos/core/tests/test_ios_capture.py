@@ -131,6 +131,37 @@ class StubAdb:
         return tiny_png(1080, 2400)
 
 
+class StubSyslogHub:
+    """duck-typing SyslogHub：返回预置条目，clear 只记调用不触设备。"""
+
+    def __init__(self) -> None:
+        self.cleared = False
+        self.entry = {
+            "time": "Nov  1 00:07:32",
+            "pid": 1234,
+            "tid": 0,
+            "level": "I",
+            "tag": "LookinDemo",
+            "message": "你好",
+            "continuation": False,
+            "seq": 1,
+        }
+
+    def read(self, device_id: str, serial: str, *, after: int | None = None, limit: int = 500) -> dict[str, object]:
+        return {
+            "deviceId": device_id,
+            "lines": [dict(self.entry)],
+            "cursor": 1,
+            "dropped": False,
+            "reset": False,
+            "buffered": 1,
+        }
+
+    def clear(self, device_id: str, serial: str) -> dict[str, object]:
+        self.cleared = True
+        return {"deviceId": device_id, "cleared": True, "cursor": 0}
+
+
 class IOSCaptureTest(unittest.TestCase):
     """iOS 设备源接入：注册表双源合并、分平台抓取、只读门禁与 Android 回归。"""
 
@@ -149,6 +180,8 @@ class IOSCaptureTest(unittest.TestCase):
         self.context.registry.adb = self.adb
         self.context.capture.adb = self.adb  # 抓取协调器持有独立的 adb 引用，需一并替换
         self.context.dispatcher.adb = self.adb  # MCP dispatcher 同样持有独立 adb 引用
+        self.syslog = StubSyslogHub()
+        self.context.syslog = self.syslog  # iOS logcat 分派走 SyslogHub，热替换避免触真实 usbmux
         self.context.registry.refresh()
         thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         thread.start()
@@ -326,16 +359,30 @@ class IOSCaptureTest(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertEqual(payload["error"]["code"], "READ_ONLY_MODE")
 
-    def test_ios_screenshot_and_logcat_blocked_with_read_only(self) -> None:
-        for path in (f"/api/v1/devices/{IOS_DEVICE_ID}/screenshot", f"/api/v1/devices/{IOS_DEVICE_ID}/logcat"):
-            status, payload = self._get(path)
-            self.assertEqual(status, 403)
-            self.assertEqual(payload["error"]["code"], "READ_ONLY_MODE")
-
-    def test_ios_logcat_clear_blocked_with_read_only(self) -> None:
-        status, payload = self._post(f"/api/v1/devices/{IOS_DEVICE_ID}/logcat/clear")
+    def test_ios_screenshot_blocked_with_read_only(self) -> None:
+        status, payload = self._get(f"/api/v1/devices/{IOS_DEVICE_ID}/screenshot")
         self.assertEqual(status, 403)
         self.assertEqual(payload["error"]["code"], "READ_ONLY_MODE")
+
+    def test_ios_logcat_read_dispatched_to_syslog_hub(self) -> None:
+        # iOS 无「设备端日志拦截」：GET /logcat 与 Android 同形，走 SyslogHub 增量读取
+        status, payload = self._get(f"/api/v1/devices/{IOS_DEVICE_ID}/logcat")
+        self.assertEqual(status, 200)
+        lines = payload["data"]["lines"]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0]["tag"], "LookinDemo")
+        self.assertEqual(lines[0]["message"], "你好")
+        self.assertEqual(payload["data"]["cursor"], 1)
+
+    def test_ios_logcat_clear_allowed_and_local_only(self) -> None:
+        # iOS 恒只读铁律针对设备注入/修改；clear 只重置 Core 本地缓冲，放在只读拦截之前放行
+        status, payload = self._post(f"/api/v1/devices/{IOS_DEVICE_ID}/logcat/clear")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["data"]["cleared"])
+        self.assertTrue(self.syslog.cleared)
+        events = [json.loads(row) for path in sorted(self.context.audit.audit_dir.glob("action-*.jsonl")) for row in path.read_text(encoding="utf-8").splitlines() if row.strip()]
+        requested = next(item for item in events if item["kind"] == "requested" and item["actionType"] == "logcat_clear")
+        self.assertEqual(requested["decision"], "allowed")
 
     def test_ios_capture_maps_lookin_error_to_http_status(self) -> None:
         self.ios.capture_error = CoreError("LOOKIN_APP_NOT_FOUND", "未找到前台运行的 Lookin App。")

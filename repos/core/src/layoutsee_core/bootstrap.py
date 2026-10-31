@@ -13,7 +13,9 @@ from .audit import ActionLog
 from .contracts import CoreInfo
 from .devices import DeviceGate, DeviceRegistry
 from .ios import IOSDeviceDriver, UsbmuxClient
+from .ios.lockdown import LockdownClient
 from .ios.simctl import SimctlClient
+from .ios.syslog import SyslogHub, SyslogRelayClient
 from .logcat import LogcatHub
 from .media import MediaHub
 from .mcp_catalog import ToolDispatcher
@@ -69,12 +71,14 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
     ios = IOSDeviceDriver(usbmux)
     registry = DeviceRegistry(adb, settings, audit, gate, ios=ios)
     store = SnapshotStore(secret=secrets.token_bytes(32))
-    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios, simctl=SimctlClient())
+    simctl = SimctlClient()  # 截图画布与模拟器日志流共用一个客户端
+    capture = CaptureCoordinator(adb, registry, store, gate, ios=ios, simctl=simctl)
     plugins = PluginRegistry(data_dir / "plugins", builtin_dir=builtin_plugins_dir(), product_version=PRODUCT_VERSION)
     dispatcher = ToolDispatcher(adb=adb, registry=registry, store=store, gate=gate, capture=capture, audit=audit, plugins=plugins)
     media = MediaHub(adb)
     ui_log = UiLogStore(data_dir)
     logcat = LogcatHub(adb)
+    syslog = SyslogHub(SyslogRelayClient(usbmux), simctl)
 
     context = CoreContext(
         info=None,  # 端口绑定后写入
@@ -95,6 +99,7 @@ def build_core(nonce: str, static_dir: Path | None = None, data_dir: Path | None
         media=media,
         ui_log=ui_log,
         logcat=logcat,
+        syslog=syslog,
         ios=ios,
     )
     server = bind_server(context, port_start)

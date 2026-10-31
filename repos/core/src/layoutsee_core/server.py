@@ -57,7 +57,7 @@ SHELL_MAX_TIMEOUT_MS = 60_000
 SHELL_OUTPUT_MAX_BYTES = 256 * 1024
 
 # iOS 设备恒只读：Lookin 协议无 tap/输入注入能力，写能力与媒体路由在分派层统一拦截
-IOS_READONLY_MESSAGE = "iOS 设备当前仅支持只读布局抓取，不支持截图/日志/终端/操作。"
+IOS_READONLY_MESSAGE = "iOS 设备当前仅支持只读布局抓取，不支持截图/终端/操作。"
 IOS_MEDIA_MESSAGE = "iOS 设备暂不支持实时投屏，仅支持布局快照线框渲染。"
 
 
@@ -86,6 +86,7 @@ class CoreContext:
     media: Any = field(default=None)
     ui_log: Any = field(default=None)
     logcat: Any = field(default=None)
+    syslog: Any = field(default=None)
     ios: Any = field(default=None)
 
 
@@ -379,7 +380,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 self._envelope(self.context.adb.window_size(self.context.registry.serial_for(device_id)))
                 return
             if sub == "logcat":
-                self._ensure_not_ios(device_id)
+                # iOS / Android 同形端点：平台分派在 _read_logcat 内完成
                 params = parse_qs(urlparse(self.path).query)
                 after = params.get("after", [""])[0]
                 limit = params.get("limit", ["500"])[0]
@@ -481,7 +482,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             device_id, sub1, sub2 = (unquote(part) for part in device_sub2.groups())
             if sub1 == "logcat" and sub2 == "clear":
                 self._require_session()
-                self._ensure_not_ios(device_id)
+                # iOS 分派在 _clear_logcat 内：本地缓冲清空不属于设备写，不受恒只读拦截
                 self._envelope(self._clear_logcat(device_id, self._read_body()))
                 return
         snapshot_sub = SNAPSHOT_SUB_PATTERN.match(path)
@@ -727,14 +728,22 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             raise CoreError("CORE_UNAVAILABLE", "日志读取未装配。")
         return hub
 
+    def _syslog_hub(self) -> Any:
+        hub = self.context.syslog
+        if hub is None:
+            raise CoreError("CORE_UNAVAILABLE", "日志读取未装配。")
+        return hub
+
     def _read_logcat(self, device_id: str, after: str, limit: str) -> dict[str, object]:
-        """读日志是只读操作：不过设备闸门、不入审计，只做参数收敛。"""
+        """读日志是只读操作：不过设备闸门、不入审计，只做参数收敛；iOS 走 SyslogHub。"""
         try:
             cursor = int(after) if after not in ("", None) else None
             count = int(limit)
         except (TypeError, ValueError):
             raise CoreError("INVALID_ARGUMENT", "after / limit 必须是整数。") from None
         serial = self.context.registry.serial_for(device_id)
+        if self._device_platform(device_id) == "ios":
+            return self._syslog_hub().read(device_id, serial, after=cursor, limit=count)
         return self._logcat_hub().read(device_id, serial, after=cursor, limit=count)
 
     def _clear_logcat(self, device_id: str, body: dict[str, object]) -> dict[str, object]:
@@ -744,6 +753,19 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
         plugin_id = str(body.get("pluginId") or "") or None
         action_id = str(body.get("actionId") or uuid.uuid4().hex[:12])
         request_id = self._request_id()
+        if self._device_platform(device_id) == "ios":
+            # iOS 恒只读铁律针对的是设备注入/修改；iOS clear 只重置 Core 本地缓冲并重连流，
+            # 不触碰设备状态，因此放在只读拦截之前放行，照常写 allowed 审计。
+            serial = self.context.registry.serial_for(device_id)
+            self.context.audit.requested(action_id=action_id, source=source, device_id=device_id, action_type="logcat_clear", payload={}, request_id=request_id, decision="allowed", plugin_id=plugin_id)
+            started = time.monotonic()
+            try:
+                result = self._syslog_hub().clear(device_id, serial)
+            except CoreError as error:
+                self.context.audit.result(action_id=action_id, result_code=error.code, duration_ms=int((time.monotonic() - started) * 1000), request_id=request_id)
+                raise
+            self.context.audit.result(action_id=action_id, result_code="ok", duration_ms=int((time.monotonic() - started) * 1000), request_id=request_id)
+            return {"actionId": action_id, **result}
         # 清空设备日志会丢掉别人正在看的数据，按写操作对待：只读拦截 + 审计
         if self.context.registry.is_readonly(device_id):
             self.context.audit.requested(action_id=action_id, source=source, device_id=device_id, action_type="logcat_clear", payload={}, request_id=request_id, decision="blocked-readonly", plugin_id=plugin_id)
