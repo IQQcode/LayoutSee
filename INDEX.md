@@ -143,6 +143,7 @@
 |---|---|---|---|
 | `snapshot-overview/` | `snapshot-overview` | app + web | 内置示例：快照统计 + 声明式组合工具 `capture_then_summarize`（`tools.json`） |
 | `android-logcat/` | `android-logcat` | **仅 app** | Android 日志抓取：AS 风格过滤表达式（`tag:` / `-tag:` / `pid:` / `level:` / 裸文本）、级别下拉、暂停/继续、清空重抓、点行停滚、soft-wrap、导出；日志经 `$u.device.logcat` 增量拉取，清空经 `$u.device.logcatClear`（只读模式下按钮禁用） |
+| `ios-logcat/` | `ios-logcat` | **仅 app** | iOS 日志抓取：AS 风格过滤表达式（`tag:` / `process:` / `proc:` 三键等价作用进程名、`pid:` / `level:` / 裸文本与 `-` 反选）、级别下拉 D/I/W/E/F（iOS 无 V）、暂停/继续、清空显示（纯前端清屏不发请求）、点行停滚、soft-wrap、导出；日志经 `$u.device.logcat` 增量拉取，iOS 恒只读故无清空设备日志类按钮（权限不含 device.write） |
 
 插件页运行在 `sandbox="allow-scripts"` 的 iframe 且 `connect-src 'none'`：不能内联 `<script>`、不能自行发请求，主题只能靠桥事件同步，所以每个插件自带一份 `--ls-*` 取值的 CSS 变量副本。
 

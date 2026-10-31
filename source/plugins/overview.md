@@ -12,6 +12,7 @@ LayoutSee 随包发行的插件包目录。每个子目录是一个独立插件�
 |------|----|------|------|
 | `snapshot-overview/` | `snapshot-overview` | app + web | 内置示例：快照统计 + 声明式组合工具 `capture_then_summarize` |
 | `android-logcat/` | `android-logcat` | 仅 app | Android 日志抓取：级别/tag/pid 过滤、暂停继续、清空重抓、自动滚动与换行 |
+| `ios-logcat/` | `ios-logcat` | 仅 app | iOS 日志抓取：进程/级别/pid 过滤、暂停继续、清空显示、导出 |
 
 ## 对外提供什么
 
