@@ -17,7 +17,7 @@ from collections.abc import Callable
 from threading import Event
 
 from layoutsee_core.errors import CoreError
-from layoutsee_core.ios.lockdown import LockdownClient
+from layoutsee_core.ios.lockdown import LockdownClient, wrap_tls
 from layoutsee_core.ios.simctl import SimctlClient
 from layoutsee_core.ios.syslog import (
     MAX_LIMIT,
@@ -78,6 +78,13 @@ class DecodeVisTest(unittest.TestCase):
         self.assertEqual(decode_vis(b"\\344\\270\\200"), "一".encode("utf-8"))
         self.assertEqual(decode_vis(b"\\101\\102"), b"AB")  # 可显示段还原
         self.assertEqual(decode_vis(b"a\\001b"), b"a\\001b")  # 控制段保留原样
+
+    def test_octal_beyond_one_byte_keeps_literal(self) -> None:
+        # \777 = 0x1FF 超出字节范围：保留原样，不抛 ValueError（对抗样本回归）
+        self.assertEqual(decode_vis(b"a\\777b"), b"a\\777b")
+
+    def test_truncated_meta_escape_keeps_literal(self) -> None:
+        self.assertEqual(decode_vis(b"tail\\M-"), b"tail\\M-")
 
     def test_mixed_ascii_and_chinese(self) -> None:
         # 第二个空格是普通字节：meta 空格（\M- ）占用第一个空格还原 0xA0
@@ -150,6 +157,14 @@ class ExtractSimJsonTest(unittest.TestCase):
     def test_prefix_junk_is_dropped(self) -> None:
         objects, residual = extract_sim_json_objects(b'noise {"a": 1}')
         self.assertEqual(objects, [{"a": 1}])
+        self.assertEqual(residual, b"")
+
+    def test_escaped_quotes_inside_strings(self) -> None:
+        # 字符串内的 \" 不应闭合字符串（深度计数需字符串感知）
+        first = {"eventMessage": 'he said "hi }" and left'}
+        blob = json.dumps(first).encode("utf-8") + b"\n"
+        objects, residual = extract_sim_json_objects(blob)
+        self.assertEqual(objects, [first])
         self.assertEqual(residual, b"")
 
 
@@ -354,6 +369,12 @@ class LockdownHandshakeTest(unittest.TestCase):
         self.assertIs(stream, service_sock)
         request = _connect_request(service_sock.sent)
         self.assertEqual(request["PortNumber"], swap_port(45678))
+
+    def test_wrap_tls_with_garbage_pair_raises_lookin_unavailable(self) -> None:
+        # 垃圾证书/私钥无法加载：映射 LOOKIN_UNAVAILABLE（临时 PEM 文件在 finally 内清理）
+        with self.assertRaises(CoreError) as ctx:
+            wrap_tls(ScriptedSocket([]), {"HostCertificate": b"not-a-cert", "HostPrivateKey": b"not-a-key"})
+        self.assertEqual(ctx.exception.code, "LOOKIN_UNAVAILABLE")
 
 
 # ---------- SyslogHub 替身 ----------

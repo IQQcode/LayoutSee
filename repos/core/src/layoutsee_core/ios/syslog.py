@@ -30,6 +30,7 @@ from collections import deque
 from collections.abc import Callable, Iterator
 
 from ..errors import CoreError
+from .driver import IOS_SIMULATOR_PREFIX
 from .lockdown import LockdownClient
 from .usbmux import UsbmuxClient
 
@@ -39,7 +40,7 @@ MAX_LIMIT = 1000
 MAX_MESSAGE_CHARS = 4000
 MAX_PENDING_BYTES = 256 * 1024  # 行未终结的残余超限即丢弃，防内存膨胀
 STREAM_TIMEOUT = 10.0  # 日志空闲期 recv 超时属正常，读取处按继续等待处理
-SIMULATOR_PREFIX = "simulator:"
+SIMULATOR_PREFIX = IOS_SIMULATOR_PREFIX
 
 # 真机级别映射（doc 决策 8）：Notice/Info→I、Warning→W、Error→E、Debug→D、其余→I
 RELAY_LEVELS = {"Notice": "I", "Info": "I", "Warning": "W", "Error": "E", "Debug": "D"}
@@ -93,7 +94,7 @@ def decode_vis(line: bytes) -> bytes:
             continue
         if len(rest) >= 3 and all(0x30 <= rest[offset] <= 0x37 for offset in range(3)):
             value = (rest[0] - 0x30) * 64 + (rest[1] - 0x30) * 8 + (rest[2] - 0x30)
-            if value >= 0x80 or 0x20 <= value <= 0x7E:  # 只还原可显示/UTF-8 高位段
+            if value <= 0xFF and (value >= 0x80 or 0x20 <= value <= 0x7E):  # 只还原可显示/UTF-8 高位段
                 out.append(value)
             else:  # 控制字符的八进制转义同样保留原样
                 out.extend(line[index:index + 4])
@@ -282,6 +283,8 @@ class SimLogStream(Iterator[dict[str, object]]):
                 raise StopIteration  # 子进程退出 = 断流（正常结束，不算错误）
             self._buffer += chunk
             objects, self._buffer = extract_sim_json_objects(self._buffer)
+            if len(self._buffer) > MAX_PENDING_BYTES:
+                self._buffer = b""  # 对象迟迟不闭合：丢弃残余防内存膨胀（与 RelayStream 对称）
             self._pending.extend(objects)
         return self._pending.popleft()
 
@@ -334,7 +337,6 @@ class SyslogHub:
             state["entries"].clear()
             state["cursor"] = 0
             state["dropped"] = False
-            state["error"] = None
             state["generation"] = int(state["generation"]) + 1  # 读取线程检测到代际变化后重开流
             closer = state["stream"]
         if closer is not None:
@@ -353,7 +355,6 @@ class SyslogHub:
                 "cursor": 0,
                 "entries": deque(maxlen=self.max_buffer),
                 "dropped": False,
-                "error": None,
                 "generation": 0,
                 "thread": None,
                 "stream": None,
@@ -380,7 +381,6 @@ class SyslogHub:
             if thread is not None and thread.is_alive():
                 closer()  # 并发拉起竞态：另一个线程已就位，关掉多余的流
                 return
-            state["error"] = None
             state["stream"] = closer
             thread = threading.Thread(
                 target=self._pump,
@@ -424,16 +424,11 @@ class SyslogHub:
                 if self._generation(device_id) != generation:
                     interrupted = True  # clear() 主动关流引发的异常，不算断流
                 else:
-                    self._record_error(device_id, error)
-                    return
-            except Exception as error:  # noqa: BLE001 —— 读取线程兜底，异常转错误状态
+                    return  # 断流：线程退出，错误经下一次 _ensure_reader 重开失败暴露给调用方
+            except Exception as error:  # noqa: BLE001 —— 读取线程兜底，异常同样按断流处理
                 if self._generation(device_id) != generation:
                     interrupted = True
                 else:
-                    self._record_error(
-                        device_id,
-                        CoreError("LOOKIN_UNAVAILABLE", f"syslog 读取线程异常：{error}", retryable=True),
-                    )
                     return
             finally:
                 try:
@@ -445,8 +440,7 @@ class SyslogHub:
             # clear() 触发的重连：重开流继续泵
             try:
                 iterator, closer, generation = self._open_stream(device_id, serial)
-            except CoreError as error:
-                self._record_error(device_id, error)
+            except CoreError:
                 return
             with self._lock:
                 self._state(device_id)["stream"] = closer
@@ -466,10 +460,6 @@ class SyslogHub:
             state["cursor"] = int(state["cursor"]) + 1
             entry["seq"] = int(state["cursor"])
             entries.append(entry)
-
-    def _record_error(self, device_id: str, error: CoreError) -> None:
-        with self._lock:
-            self._state(device_id)["error"] = error
 
 
 def terminate_process(process: subprocess.Popen) -> None:

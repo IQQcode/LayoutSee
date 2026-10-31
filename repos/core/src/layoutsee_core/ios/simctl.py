@@ -16,8 +16,8 @@ from ..errors import CoreError
 XCRUN_PATH = "/usr/bin/xcrun"
 # 固定临时截图路径：抓取由 DeviceGate 串行化，跨进程极端并发下允许覆盖重写
 SCREENSHOT_TEMP_PATH = "/tmp/layoutsee-sim-screenshot.png"
-# 模拟器/真机 UDID 均为大写十六进制与连字符组成的 36 位串；参与 argv 前必须过此校验（防注入）
-UDID_PATTERN = re.compile(r"^[0-9A-F-]{36}$")
+# 本路径只服务模拟器（booted UDID 为规范 UUID 形态）；参与 argv 前必须过此校验（防注入）
+UDID_PATTERN = re.compile(r"^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
 
 
 class SimctlClient:
