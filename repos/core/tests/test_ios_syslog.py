@@ -325,6 +325,21 @@ class LockdownHandshakeTest(unittest.TestCase):
         self.assertEqual(requests[1]["HostID"], UDID)
         self.assertEqual(requests[2]["Service"], "com.apple.syslog_relay")
 
+    def test_read_pair_record_sends_expected_request(self) -> None:
+        record = plistlib.dumps({"HostID": UDID, "HostCertificate": b"cert-bytes", "HostPrivateKey": b"key-bytes"}, fmt=plistlib.FMT_BINARY)
+        pair_sock = ScriptedSocket(usbmux_plist_response({
+            "MessageType": "Result",
+            "Number": 0,
+            "PairRecordData": record,
+        }))
+        client = LockdownClient(UsbmuxClient(socket_factory=ScriptedSocketFactory([pair_sock])), socket_factory=ScriptedSocketFactory([pair_sock]))
+        client.read_pair_record(UDID)
+        length, _version, message, _tag = USBMUX_HEADER.unpack_from(pair_sock.sent, 0)
+        self.assertEqual(message, MESSAGE_PLIST)
+        payload = plistlib.loads(pair_sock.sent[USBMUX_HEADER.size:length])
+        self.assertEqual(payload["MessageType"], "ReadPairRecord")
+        self.assertEqual(payload["PairRecordID"], UDID)
+
     def test_start_service_rejection_maps_to_lookin_unavailable(self) -> None:
         client, _ = build_lockdown({"Request": "StartService", "Error": "InvalidService"})
         with self.assertRaises(CoreError) as ctx:
