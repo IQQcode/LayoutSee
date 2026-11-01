@@ -21,6 +21,12 @@
 
 已知系统限制（写入插件文案）：os_log 私有内容显示 `<private>`（系统脱敏无法绕过）；真机 syslog_relay 仅实时流无历史回放。
 
+### 真机联调发现（2026-11-01，iPhone USB 首连即修复）
+
+1. **ReadPairRecord 响应无 Result 包装**：新版 macOS usbmuxd 直接回 `{"PairRecordData": <data>}`（0.0s 秒回），没有 `{"MessageType": "Result", ...}` 包装——旧实现把有效响应当推送跳过、继续等下一条导致 3s 超时（用户首发报错「读取配对记录失败：timed out」的根因）。已兼容两种形态 + 裸形态回归测试。
+2. **配对记录里的证书/私钥已是 PEM 文本**（`-----BEGIN CERTI...` 开头，非 DER）——DER 二次包装导致 `load_cert_chain` 全标签失败（报「配对记录私钥无法加载」）。`_write_temp_pem` 改为 PEM 直写、DER 才包装。
+3. 修复后真机端到端程序化冒烟通过：0.3s 读到 18 条真实日志（`druid(UIKitCore)` / `kernel(AppleH16ANEInterface)` / `locationd` 等），`<private>` 系统脱敏按预期呈现；级别映射与 tag 解析正确。
+
 ## 已完成内容
 
 - 调研并验证 iOS 双端日志抓取技术路线（含本机 booted 模拟器实测 json 格式）
@@ -48,7 +54,8 @@
 - [x] `npm run lint` 通过；`npm run contracts:check` 无漂移；`npm run test:web` 18 pass；`npm run test:contracts` 7 pass（夹具修复后恢复全绿）
 - [x] 模拟器链路端到端冒烟：真实 Core + booted 模拟器（3249070E），SyslogHub 增量读出真实日志（D 级 locationd 等，游标/清理正常）；插件以 `origin: builtin`、`devicePlatforms: ["ios"]` 正确入 `/api/v1/plugins/index`
 - [x] 双 review：规格符合性（8 条验收逐条实测）与代码质量（并发/资源/安全走查）均 PASS_WITH_NOTES；P2 项（decode_vis 八进制 `\777` 越界 ValueError）已修复并补对抗回归
-- [ ] **真机（USB 测试机）联调**：本机无真机在场，lockdown/syslog_relay 链路仅有替身单测覆盖——待用户接真机在工作台打开「日志抓取」卡片做最终可视化确认（重点看中文日志可读性与 process: 过滤）
+- [x] **真机（USB 测试机）链路**：修复两处真机首发 bug（ReadPairRecord 裸响应形态、配对证书 PEM 直写）后，端到端程序化冒烟通过（0.3s 读到 18 条真实日志，含 tag/级别/`<private>` 脱敏正确）；UI 可视化确认由人负责（重启 Core 后在工作台插件页验证）
+- [x] 真机联调回归：`test:core` 222 用例全绿（新增裸响应形态与 PEM 直写用例）、lint / contracts:check 通过
 
 ## 后续建议
 

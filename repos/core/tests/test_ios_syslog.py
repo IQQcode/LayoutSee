@@ -340,6 +340,24 @@ class LockdownHandshakeTest(unittest.TestCase):
         self.assertEqual(payload["MessageType"], "ReadPairRecord")
         self.assertEqual(payload["PairRecordID"], UDID)
 
+    def test_read_pair_record_accepts_bare_response_shape(self) -> None:
+        # 新版 macOS 真机实测（2026-11）：响应无 Result 包装，PairRecordData 在顶层；
+        # 旧实现把它当推送跳过并最终 3s 超时（真机首发 bug 根因）
+        record = plistlib.dumps({"HostID": UDID, "HostCertificate": b"cert-bytes", "HostPrivateKey": b"key-bytes"}, fmt=plistlib.FMT_BINARY)
+        pair_sock = ScriptedSocket(usbmux_plist_response({"PairRecordData": record}))
+        client = LockdownClient(UsbmuxClient(socket_factory=ScriptedSocketFactory([pair_sock])), socket_factory=ScriptedSocketFactory([pair_sock]))
+        parsed = client.read_pair_record(UDID)
+        self.assertEqual(parsed["HostID"], UDID)
+
+    def test_wrap_tls_accepts_pem_encoded_pair_material(self) -> None:
+        # 真机实测：配对记录里的证书/私钥已是 PEM 文本；PEM 直写路径不应再二次包装
+        # （用合法 PEM 头 + 无效内容的垃圾 body：能走到 load_cert_chain 即证明直写成功，失败映射 LOOKIN_UNAVAILABLE）
+        pem_cert = b"-----BEGIN CERTIFICATE-----\nZ2FyYmFnZQ==\n-----END CERTIFICATE-----\n"
+        pem_key = b"-----BEGIN PRIVATE KEY-----\nZ2FyYmFnZQ==\n-----END PRIVATE KEY-----\n"
+        with self.assertRaises(CoreError) as ctx:
+            wrap_tls(ScriptedSocket([]), {"HostCertificate": pem_cert, "HostPrivateKey": pem_key})
+        self.assertEqual(ctx.exception.code, "LOOKIN_UNAVAILABLE")
+
     def test_start_service_rejection_maps_to_lookin_unavailable(self) -> None:
         client, _ = build_lockdown({"Request": "StartService", "Error": "InvalidService"})
         with self.assertRaises(CoreError) as ctx:

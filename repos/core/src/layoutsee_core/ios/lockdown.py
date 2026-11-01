@@ -146,7 +146,10 @@ class LockdownClient:
     def read_pair_record(self, udid: str) -> dict[str, object]:
         """通过 usbmuxd ReadPairRecord 消息读取配对记录（这是 usbmuxd 消息，非 lockdown 请求）。
 
-        响应 PairRecordData 是内嵌 binary plist 的 data；缺失/拒绝按未配对处理。
+        响应有两种形态（真机实测 2026-11）：
+        - 新版 macOS：顶层 {"PairRecordData": <data>}，无 Result 包装；
+        - 老版：{"MessageType": "Result", "Number": 0, "PairRecordData": <data>}。
+        PairRecordData 是内嵌 binary plist 的 data；缺失/拒绝按未配对处理。
         """
         sock = self._open_mux()
         try:
@@ -170,31 +173,23 @@ class LockdownClient:
                         "usbmuxd 返回了无法解析的配对记录响应。",
                         details={"udid": udid},
                     ) from error
-                if not isinstance(obj, dict) or obj.get("MessageType") != "Result":
+                if not isinstance(obj, dict):
                     continue
-                if obj.get("Number") != 0 or "PairRecordData" not in obj:
-                    raise CoreError(
-                        "LOOKIN_UNAVAILABLE",
-                        "未找到设备配对记录，请先用 Xcode/Finder 配对设备。",
-                        details={"udid": udid, "result": obj.get("Number")},
-                    )
-                record = obj["PairRecordData"]
-                if isinstance(record, (bytes, bytearray)):
-                    try:
-                        record = plistlib.loads(bytes(record))
-                    except plistlib.InvalidFileException as error:
+                if "PairRecordData" in obj:
+                    return self._validated_record(obj["PairRecordData"], udid)
+                if obj.get("MessageType") == "Result":
+                    if obj.get("Number") != 0:
                         raise CoreError(
                             "LOOKIN_UNAVAILABLE",
-                            "配对记录 plist 解析失败，请重新配对设备。",
-                            details={"udid": udid},
-                        ) from error
-                if not isinstance(record, dict) or not record.get("HostCertificate"):
+                            "未找到设备配对记录，请先用 Xcode/Finder 配对设备。",
+                            details={"udid": udid, "result": obj.get("Number")},
+                        )
                     raise CoreError(
                         "LOOKIN_UNAVAILABLE",
-                        "配对记录缺少 Host 证书，请先用 Xcode/Finder 重新配对设备。",
+                        "usbmuxd 的配对记录响应缺少 PairRecordData。",
                         details={"udid": udid},
                     )
-                return record
+                # 其他消息（DeviceAttached/DeviceDetached 推送等）继续等待
             raise CoreError("LOOKIN_UNAVAILABLE", "usbmuxd 未返回 ReadPairRecord 响应。", details={"udid": udid})
         except OSError as error:
             raise CoreError(
@@ -205,6 +200,25 @@ class LockdownClient:
             ) from error
         finally:
             sock.close()
+
+    def _validated_record(self, record: object, udid: str) -> dict[str, object]:
+        """解析内嵌 plist 并校验 Host 证书在场，两种响应形态共用。"""
+        if isinstance(record, (bytes, bytearray)):
+            try:
+                record = plistlib.loads(bytes(record))
+            except plistlib.InvalidFileException as error:
+                raise CoreError(
+                    "LOOKIN_UNAVAILABLE",
+                    "配对记录 plist 解析失败，请重新配对设备。",
+                    details={"udid": udid},
+                ) from error
+        if not isinstance(record, dict) or not record.get("HostCertificate"):
+            raise CoreError(
+                "LOOKIN_UNAVAILABLE",
+                "配对记录缺少 Host 证书，请先用 Xcode/Finder 重新配对设备。",
+                details={"udid": udid},
+            )
+        return record
 
     def _open_mux(self) -> socket.socket:
         """为 ReadPairRecord 打开一条 usbmuxd socket（ReadPairRecord 不走 lockdown 隧道）。"""
@@ -264,16 +278,22 @@ def _ssl_context(pair: dict[str, object]) -> ssl.SSLContext:
             _unlink(cert_path)
 
 
-def _write_temp_pem(der: bytes, label: str) -> str:
-    """DER 转 PEM 写入 0600 临时文件，返回路径（调用方负责删除）。"""
-    body = base64.encodebytes(der)
+def _write_temp_pem(data: bytes, label: str) -> str:
+    """写 0600 临时 PEM 文件，返回路径（调用方负责删除）。
+
+    配对记录里的证书/私钥已是 PEM 文本（真机实测 macOS 形态，-----BEGIN 开头）直接落盘；
+    DER 字节才按 label 包装成 PEM。
+    """
     fd, path = mkstemp(prefix="layoutsee-pair-")  # mkstemp 自带 0600 权限
     try:
         with os.fdopen(fd, "wb") as handle:
             fd = -1  # 所有权移交文件对象
-            handle.write(b"-----BEGIN " + label.encode("ascii") + b"-----\n")
-            handle.write(body)
-            handle.write(b"-----END " + label.encode("ascii") + b"-----\n")
+            if data.lstrip().startswith(b"-----BEGIN"):
+                handle.write(data)
+            else:
+                handle.write(b"-----BEGIN " + label.encode("ascii") + b"-----\n")
+                handle.write(base64.encodebytes(data))
+                handle.write(b"-----END " + label.encode("ascii") + b"-----\n")
     except BaseException:
         if fd >= 0:
             os.close(fd)
