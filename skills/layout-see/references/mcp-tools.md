@@ -4,15 +4,15 @@ LayoutSee Core 通过 MCP 暴露 12 个内置工具，实现以 `repos/core` 的
 
 ## 端点与协议
 
-- 每台已连设备一个端点：`http://127.0.0.1:<port>/mcp/android-<serial>/{sse|message}`。
+- 每台已连设备一个端点：`http://127.0.0.1:<port>/mcp/<deviceId>/{sse|message}`。
 - 端口默认 11663，被占用时向后探测到 11672。
-- device_id 恒为 `android-<serial>`，serial 来自 `adb devices`（如 `RFCY41B0EVZ`、`emulator-5554`）。
+- device_id 三种形态：`android-<serial>`（serial 来自 `adb devices`，如 `RFCY41B0EVZ`、`emulator-5554`）、`ios-<udid>`（iOS 真机，udid 由 Core 经 usbmuxd 枚举）、`ios-sim-<port>`（iOS 模拟器，port 为 LookinServer 端口 47164–47169）。三者均可从 `GET /api/v1/devices` 返回或脚本 `--devices` 输出取到。
 - 协议是 JSON-RPC 2.0，method 有 `initialize`、`tools/list`、`tools/call`。
 - `tools/call` 返回体：`result.content[0].text` 是一段 JSON 字符串，需二次解析才拿到工具真正的返回对象；`result.isError` 标识工具级错误。
 
 ## 工具表
 
-必填参数标 `*`。省略 `snapshotId` 的读工具作用在最新快照。
+必填参数标 `*`。省略 `snapshotId` 的读工具作用在最新快照。9 个读工具 Android 与 iOS 均可用，iOS 差异见表后说明；3 个写工具为 Android 专属。
 
 | 工具 | 类型 | 入参 | 返回要点 |
 |---|---|---|---|
@@ -29,18 +29,27 @@ LayoutSee Core 通过 MCP 暴露 12 个内置工具，实现以 `repos/core` 的
 | `swipe` | write | fromX*, fromY*, toX*, toY*；durationMs?（0 至 5000，默认 300） | action 及各坐标 |
 | `input_text` | write | text*（≤512） | action, chars |
 
+## iOS 设备注记
+
+- `get_device_info`：density 恒为 null（iOS 无独立密度）；windowSizePx 与 orientation 来自最新快照，无快照报 `SNAPSHOT_STALE`。
+- `get_current_app`：packageName 为 bundleId，从最新快照读取；无快照报 `LOOKIN_APP_NOT_FOUND`。返回无 activity 字段（iOS 无 Android 的 Activity 概念）。
+- `get_screenshot`：无实时截图链路。省略 snapshotId 时回落最新快照底图；无快照报 `SNAPSHOT_STALE`，快照无底图（真机渲染图拉取失败降级线框）报 `MEDIA_UNAVAILABLE`。带 snapshotId 时双端行为一致。
+- 其余读工具（`capture_layout` / `get_layout` / `get_layout_summary` / `diagnose_layout` / `query_xpath` / `find_element`）双端行为一致。
+- 写工具 `tap` / `swipe` / `input_text` 对 iOS 恒返回 `READ_ONLY_MODE`（iOS 设备只读），平台差异全表见 SKILL.md「平台差异」。
+
 ## 六类诊断（diagnose_layout）
 
 `overlap` 重叠，`occlusion` 遮挡，`out_of_bounds` 越界，`small_touch_target` 点击区域过小，`text_truncation` 文本截断，`invisible_interactive` 不可见但可交互。插件可追加 `pluginFindings`，总量截断在 50 条。
 
 ## 常见错误码
 
-- `SNAPSHOT_STALE`：无可用快照，先调 `capture_layout`。
-- `READ_ONLY_MODE`：设备只读，写操作被拦。
+- `SNAPSHOT_STALE`：无可用快照，先调 `capture_layout`。iOS 的 `get_device_info` 与省略 snapshotId 的 `get_screenshot` 在首次抓取前也返回此码。
+- `LOOKIN_APP_NOT_FOUND`：iOS 未找到可用 App：App 未集成 LookinServer、未前台运行、连接被官方 Lookin 客户端占用（单客户端独占），或调用 `get_current_app` 时还没有快照。先确认 App 前台运行再 `capture_layout`。
+- `READ_ONLY_MODE`：设备只读，写操作被拦（iOS 设备恒触发）。
 - `REF_NOT_FOUND`：ref 对应节点不存在，重新 `find_element` 或 `get_layout_summary` 取 ref。
 - `INVALID_ARGUMENT`：参数缺失或非法（如 `tap` 既无 x/y 也无 ref）。
-- `MEDIA_UNAVAILABLE`：截图不可用，可重试。
+- `MEDIA_UNAVAILABLE`：截图不可用，可重试。iOS 上还表示本次快照没有渲染底图（真机降级线框时出现）。
 
 ## tap 的 ref 用法
 
-`find_element` 或 `get_layout_summary` 返回的短 ref 可直接传给 `tap`，Core 会取该节点 boundsPx 中心点执行点击，省去手工算坐标。
+`find_element` 或 `get_layout_summary` 返回的短 ref 可直接传给 `tap`，Core 会取该节点 boundsPx 中心点执行点击，省去手工算坐标。Android 专属：iOS 设备写操作恒被只读门禁拦截，返回 `READ_ONLY_MODE`。

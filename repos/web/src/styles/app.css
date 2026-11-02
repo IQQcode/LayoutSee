@@ -20,6 +20,7 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .window-titlebar .brand-lockup { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
 .brand-mark { display: block; width: 24px; height: 24px; border-radius: 5px; }
 .version-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--ls-color-border-default); color: var(--ls-color-text-tertiary); font-size: 11px; font-weight: 500; }
+.build-chip { padding: 1px 7px; border-radius: 999px; border: 1px dashed var(--ls-color-border-default); color: var(--ls-color-text-tertiary); font-size: 10.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .window-titlebar .top-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; -webkit-app-region: no-drag; }
 
 .app-body { display: grid; grid-template-columns: var(--ls-sidebar-width) minmax(0, 1fr); min-height: 0; }
@@ -484,11 +485,12 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .device-frame img.device-pixel { width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; image-rendering: auto; }
 .device-frame canvas.device-pixel { width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none; background: transparent; border-radius: 13px; }
 .overlay-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.node-overlay { position: absolute; pointer-events: none; border: 1px solid color-mix(in srgb, var(--ls-color-brand) 45%, transparent); }
-.node-overlay.wireframe { border: 1px solid color-mix(in srgb, var(--ls-color-brand) 72%, white 8%); background: transparent; box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.35); }
-/* 选中元素用红色突出：边框粗细与蒙层透明度与其他状态保持一致 */
-.node-overlay.selected { border: 1px solid var(--ls-color-danger); background: color-mix(in srgb, var(--ls-color-danger) 12%, transparent); }
-.node-overlay.wireframe.selected { border-color: var(--ls-color-danger); background: color-mix(in srgb, var(--ls-color-danger) 12%, transparent); }
+.node-overlay { position: absolute; pointer-events: none; border: 1px solid color-mix(in srgb, var(--ls-color-brand) 40%, transparent); }
+.node-overlay.wireframe { border: 1px solid color-mix(in srgb, var(--ls-color-brand) 60%, transparent); background: transparent; }
+/* 选中元素：红色粗边框 + 蒙层 + 外发光并置顶；配合 .has-selection 压暗其余线框，保证 232 个框里一眼可辨 */
+.node-overlay.selected { border: 2px solid var(--ls-color-danger); background: color-mix(in srgb, var(--ls-color-danger) 14%, transparent); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 0 12px color-mix(in srgb, var(--ls-color-danger) 60%, transparent); z-index: 5; }
+.node-overlay.wireframe.selected { border-color: var(--ls-color-danger); background: color-mix(in srgb, var(--ls-color-danger) 14%, transparent); box-shadow: 0 0 0 1px rgba(0,0,0,.3), 0 0 12px color-mix(in srgb, var(--ls-color-danger) 60%, transparent); z-index: 5; }
+.device-frame.has-selection .node-overlay.wireframe:not(.selected):not(.xpath):not(.hovered) { opacity: .28; }
 .node-overlay.hovered { border: 1.5px solid color-mix(in srgb, var(--ls-color-brand) 80%, transparent); }
 .node-overlay.xpath { border: 1.5px dashed var(--ls-color-brand); background: color-mix(in srgb, var(--ls-color-brand) 8%, transparent); }
 .node-overlay.diagnostic-error { border: 2px solid var(--ls-color-danger); background: color-mix(in srgb, var(--ls-color-danger) 12%, transparent); }
@@ -666,6 +668,16 @@ body { overflow: hidden; background: var(--ls-color-bg-canvas); }
 .xml-line .tok-punct { color: var(--code-punct); }
 .xml-line .tok-flag { color: var(--code-flag); font-size: 10.5px; }
 .tree-empty { padding: 24px; text-align: center; color: var(--ls-color-text-tertiary); }
+
+/* iOS 属性分组（对齐 Lookin 面板）与层级树 ivar / 自定义类徽标 */
+.attr-section-head { padding: 7px 12px 4px; color: var(--ls-color-text-tertiary); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; background: var(--ls-color-bg-subtle); border-top: 1px solid var(--ls-color-border-default); }
+.property-row.attr-row code { display: flex; align-items: center; gap: 6px; }
+.attr-swatch { flex: 0 0 12px; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--ls-color-border-default); }
+details.raw-attrs { border-top: 1px solid var(--ls-color-border-default); }
+details.raw-attrs summary { padding: 7px 12px; cursor: pointer; color: var(--ls-color-text-tertiary); font-size: 11px; user-select: none; }
+details.raw-attrs[open] summary { border-bottom: 1px solid var(--ls-color-border-default); }
+.xml-line .tok-ivar { color: var(--code-attr); opacity: 0.75; }
+.xml-line .tok-tag.tok-custom { color: var(--code-value); font-weight: 600; }
 
 .selector-list { display: grid; gap: 8px; }
 .selector-item { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--ls-color-border-default); border-radius: 9px; background: var(--ls-color-bg-subtle); }

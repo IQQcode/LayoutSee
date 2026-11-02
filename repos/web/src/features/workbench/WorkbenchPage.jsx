@@ -22,6 +22,12 @@ const DEFAULT_SHARE = 0.44;
 // 终端不再是独立 Tab：入口收拢到插件页卡片，路由 /workbench/terminal 保留并复用插件二级页外壳
 const TAB_IDS = ["common", "element", "mcp", "plugins", "intelligence"];
 const TAB_LABELS = { common: "常用", plugins: "插件", element: "元素查看", mcp: "MCP", intelligence: "布局智能" };
+const PLATFORM_LABELS = { android: "Android", ios: "iOS", harmony: "HarmonyOS" };
+
+// iOS 无实时操控链路：常用 Tab 隐藏（/workbench/terminal 路由保留，入口收拢在插件页）
+function visibleTabs(platform) {
+  return platform === "ios" ? TAB_IDS.filter((id) => id !== "common") : TAB_IDS;
+}
 
 // 图标用 morphicons：icon 变化即弹性变形；pulseIcon 用于一次性动作（按一下变形再变回）
 function RailButton({ icon, pulseIcon, pulseMs = 900, label, active, danger, disabled, spinning = false, onClick }) {
@@ -53,9 +59,11 @@ function RailButton({ icon, pulseIcon, pulseMs = 900, label, active, danger, dis
   );
 }
 
-export function ControlRail({ device, onBack, onAction, readonly, frozen, inspect, tab, onTab, snapshotView, capturing, captureDone }) {
+export function ControlRail({ device, onBack, onAction, readonly, frozen, inspect, tab, onTab, snapshotView, capturing, captureDone, tabs = TAB_IDS }) {
   const press = (key) => onAction({ type: "press_key", key });
-  const writeDisabled = Boolean(readonly || frozen || device?.status !== "connected");
+  // iOS 恒只读：写类按钮直接置灰，不必等 readonly 状态回流，也不用点了才吃 403
+  const iosReadonly = device?.platform === "ios";
+  const writeDisabled = Boolean(readonly || frozen || device?.status !== "connected" || iosReadonly);
   const snapshotLocked = Boolean(snapshotView);
   // 抓取按钮三段式：待命相机 → 抓取中旋转加载 → 完成对勾
   const captureIcon = capturing ? glyphs.captureBusy : captureDone ? glyphs.captureDone : glyphs.capture;
@@ -80,11 +88,11 @@ export function ControlRail({ device, onBack, onAction, readonly, frozen, inspec
       />
       <div className="rail-divider" />
       <RailButton icon={captureIcon} label="抓取布局快照" disabled={device?.status !== "connected"} active={snapshotView} spinning={capturing} onClick={() => onAction({ type: "capture" })} />
-      <RailButton icon={frozen ? glyphs.thaw : glyphs.freeze} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
-      <RailButton icon={readonly ? glyphs.unlocked : glyphs.locked} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
-      <RailButton icon={inspect ? glyphs.browse : glyphs.inspect} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
+      <RailButton icon={frozen ? glyphs.thaw : glyphs.freeze} label={frozen ? "解除冻结" : "冻结画面"} active={frozen} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: frozen ? "unfreeze" : "freeze" })} />
+      <RailButton icon={readonly ? glyphs.unlocked : glyphs.locked} label={readonly ? "关闭只读模式" : "开启只读模式"} active={readonly} danger={readonly} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: readonly ? "readonly-off" : "readonly-on" })} />
+      <RailButton icon={inspect ? glyphs.browse : glyphs.inspect} label={inspect ? "退出审查模式" : "进入审查模式"} active={inspect} disabled={snapshotLocked || iosReadonly} onClick={() => onAction({ type: inspect ? "inspect-off" : "inspect-on" })} />
       <div className="rail-divider" />
-      {TAB_IDS.map((id) => (
+      {tabs.map((id) => (
         <RailButton key={id} icon={TabIcon(id, tab === id)} label={TAB_LABELS[id]} active={tab === id || (id === "plugins" && (isPluginTab(tab) || tab === "terminal"))} onClick={() => onTab(id)} />
       ))}
       <div className="rail-spacer" />
@@ -122,7 +130,7 @@ export function WorkbenchPage() {
   const [viewMode, setViewMode] = useState("live");
   const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth);
   const [deviceWidth, setDeviceWidth] = useState(null);
-  const [extensions, setExtensions] = useState(EMPTY_EXTENSIONS);
+  const [pluginIndex, setPluginIndex] = useState(null);
   const [extensionsReady, setExtensionsReady] = useState(false);
   const [pointer, setPointer] = useState(null);
   const [deviceSize, setDeviceSize] = useState(null);
@@ -152,7 +160,7 @@ export function WorkbenchPage() {
     const load = () => {
       api.pluginIndex()
         .then((index) => {
-          if (active) setExtensions(buildExtensionModel(index, { devicePlatform: "android" }));
+          if (active) setPluginIndex(index);
         })
         .catch(() => {})
         .finally(() => {
@@ -174,6 +182,16 @@ export function WorkbenchPage() {
   }, []);
 
   const device = useMemo(() => devices.find((item) => item.deviceId === deviceId) ?? null, [devices, deviceId]);
+
+  // 实时操控链路只有 Android 具备：iOS 恒走快照视图
+  const isIos = device?.platform === "ios";
+
+  // 扩展模型按真实设备平台构建：iOS 设备上 android 专属插件进 unavailable 并说明原因
+  const devicePlatform = device?.platform ?? "android";
+  const extensions = useMemo(
+    () => (pluginIndex ? buildExtensionModel(pluginIndex, { devicePlatform }) : EMPTY_EXTENSIONS),
+    [pluginIndex, devicePlatform],
+  );
 
   const deviceMax = useMemo(() => Math.max(DEVICE_MIN, Math.min(DEVICE_MAX, workspaceWidth - 68 - 8 - 520)), [workspaceWidth]);
   const defaultDeviceWidth = useMemo(() => Math.min(deviceMax, Math.max(DEVICE_MIN, Math.round(workspaceWidth * DEFAULT_SHARE))), [deviceMax, workspaceWidth]);
@@ -209,13 +227,20 @@ export function WorkbenchPage() {
     setReadonly(Boolean(device?.readonly));
   }, [device?.readonly]);
 
+  // 掉线重置实时视图仅针对 Android；iOS 没有实时链路，保持快照视图
   useEffect(() => {
-    if (device?.status !== "connected") setViewMode("live");
-  }, [device?.status]);
+    if (device?.status !== "connected" && !isIos) setViewMode("live");
+  }, [device?.status, isIos]);
 
+  // iOS 进入工作台即快照视图（不触发 live/stream 请求），Android 维持实时默认
   useEffect(() => {
-    setViewMode("live");
-  }, [deviceId]);
+    setViewMode(isIos ? "snapshot" : "live");
+  }, [deviceId, isIos]);
+
+  // iOS 没有常用 Tab：直达 /workbench/common 时重定向到元素查看，避免渲染空面板
+  useEffect(() => {
+    if (isIos && tab === "common") navigate(`/devices/${encodeURIComponent(deviceId)}/workbench/element`, { replace: true });
+  }, [isIos, tab, deviceId, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -263,14 +288,20 @@ export function WorkbenchPage() {
     }
   }, [capturing, device?.status, deviceId, toast]);
 
+  // 重置回默认视图：Android 回实时投屏，iOS 回快照视图（没有实时链路可回）
   const resetToLive = useCallback(() => {
-    setViewMode("live");
+    setViewMode(isIos ? "snapshot" : "live");
     setHighlights({});
     setSelectedNode(null);
-    uiLog(LogTags.workbench, "重置为实时投屏", "info");
-  }, []);
+    uiLog(LogTags.workbench, isIos ? "已返回快照视图" : "重置为实时投屏", "info");
+  }, [isIos]);
 
   const handleAction = useCallback(async (action) => {
+    // iOS 恒只读：除抓取快照外的动作在入口直接拦截，不发起注定 403 的请求
+    if (isIos && action.type !== "capture") {
+      toast("iOS 设备暂不支持操作指令", "warning");
+      return;
+    }
     switch (action.type) {
       case "capture":
         await capture();
@@ -318,7 +349,7 @@ export function WorkbenchPage() {
         }
       }
     }
-  }, [capture, deviceId, toast]);
+  }, [capture, deviceId, toast, isIos]);
 
   const selectNode = useCallback((nodeKey) => {
     setSelectedNode(nodeKey);
@@ -364,6 +395,7 @@ export function WorkbenchPage() {
   }
 
   const setTab = (next) => navigate(`/devices/${encodeURIComponent(deviceId)}/workbench/${next}`);
+  const tabs = visibleTabs(device?.platform);
 
   const tabProps = { device, deviceId, snapshotMeta, snapshotData, readonly, frozen, onSelectNode: selectNode, onHighlight: showDiagnostic, onCapture: capture, capturing, onToast: toast, onViewReset: resetToLive, snapshotView: viewMode === "snapshot" };
   const activePluginTab = isPluginTab(tab) ? findPluginTab(extensions, tab) : null;
@@ -375,7 +407,7 @@ export function WorkbenchPage() {
         <div className="brand-lockup">
           <img className="brand-mark" src="/layoutsee-icon-192.png" alt="" aria-hidden="true" />
           <span>LayoutSee</span>
-          <span className="version-chip">V22.6.1</span>
+          <span className="version-chip">V{coreInfo?.productVersion ?? "22.7.0"}</span>
         </div>
       </header>
       <div className="workspace-body">
@@ -391,15 +423,21 @@ export function WorkbenchPage() {
         snapshotView={viewMode === "snapshot"}
         capturing={capturing}
         captureDone={captureDone}
+        tabs={tabs}
       />
       <div className="device-stage" style={{ flex: `0 0 ${deviceWidth ?? defaultDeviceWidth}px`, maxWidth: DEVICE_MAX }}>
         <div className="device-info-bar">
-          <div className="info-group"><span>平台</span><strong>Android</strong></div>
+          <div className="info-group"><span>平台</span><strong>{PLATFORM_LABELS[device.platform] ?? device.platform}</strong></div>
           <div className="info-group"><span>设备</span><strong>{device.model || "未知型号"}</strong></div>
           <div className="info-group"><span>序列号</span><strong className="mono">{device.serial}</strong></div>
           <button className="copy-inline" onClick={async () => { await navigator.clipboard.writeText(device.serial); toast("序列号已复制"); }} aria-label="复制序列号"><Copy size={14} /></button>
           <div className="device-switcher">
-            <select aria-label="切换设备" value={deviceId} onChange={(event) => navigate(`/devices/${encodeURIComponent(event.target.value)}/workbench/${tab}`)}>
+            <select aria-label="切换设备" value={deviceId} onChange={(event) => {
+              // 目标设备是 iOS 且当前停在常用 Tab 时，落到元素查看，避免进入被隐藏的 Tab
+              const next = devices.find((item) => item.deviceId === event.target.value);
+              const nextTab = tab === "common" && next?.platform === "ios" ? "element" : tab;
+              navigate(`/devices/${encodeURIComponent(event.target.value)}/workbench/${nextTab}`);
+            }}>
               {devices.filter((item) => item.status === "connected").map((item) => (
                 <option key={item.deviceId} value={item.deviceId}>{item.model || item.serial}</option>
               ))}
@@ -469,13 +507,13 @@ export function WorkbenchPage() {
         ) : (
           <>
             <div className="task-tabs" role="tablist" aria-label="工作台任务">
-              {TAB_IDS.map((id) => (
+              {tabs.map((id) => (
                 <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
                   {TAB_LABELS[id]}
                 </button>
               ))}
             </div>
-            {tab === "common" ? <CommonTab {...tabProps} /> : null}
+            {tabs.includes("common") && tab === "common" ? <CommonTab {...tabProps} /> : null}
             {tab === "plugins" ? <PluginsTab {...tabProps} extensions={extensions} onOpenPluginTab={setTab} /> : null}
             {tab === "element" ? <ElementTab {...tabProps} selectedNode={selectedNode} onSelectNode={selectNode} setHighlights={setHighlights} /> : null}
             {tab === "mcp" ? <McpTab {...tabProps} /> : null}

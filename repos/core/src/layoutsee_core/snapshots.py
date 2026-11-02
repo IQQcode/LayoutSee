@@ -12,6 +12,9 @@ from typing import Any
 from .adb import AdbClient
 from .devices import DeviceGate, DeviceRegistry
 from .errors import CoreError
+from .ios import IOSDeviceDriver
+from .ios.driver import IOS_SIMULATOR_PREFIX
+from .ios.simctl import SimctlClient
 
 MAX_NODES = 3000
 MAX_DEPTH = 128
@@ -58,11 +61,17 @@ def normalize_nodes(xml_text: str, window_size: dict[str, int]) -> tuple[list[di
     def walk(element: ET.Element, parent_key: str | None, depth: int, parent_bounds: tuple[int, int, int, int] | None, child_index: int) -> None:
         if len(nodes) >= MAX_NODES or depth > MAX_DEPTH:
             return
-        key = "0" if parent_key is None else f"{parent_key}.{child_index}"
+        # 根节点按索引编号（Android 单根恒为 "0"；iOS 多窗口各占一个根键位）
+        key = str(child_index) if parent_key is None else f"{parent_key}.{child_index}"
         raw_attrs = dict(element.attrib)
         bounds = parse_bounds(raw_attrs.get("bounds", "")) or parent_bounds or (0, 0, 0, 0)
         has_bounds = parse_bounds(raw_attrs.get("bounds", "")) is not None
         left, top, right, bottom = bounds
+        hidden = raw_attrs.get("hidden") == "true"
+        try:
+            alpha = float(raw_attrs.get("alpha", "1") or 1)
+        except ValueError:
+            alpha = 1.0
         node: dict[str, object] = {
             "nodeKey": key,
             "parentKey": parent_key,
@@ -79,7 +88,7 @@ def normalize_nodes(xml_text: str, window_size: dict[str, int]) -> tuple[list[di
                 "right": round(right / width, 6) if width else 0,
                 "bottom": round(bottom / height, 6) if height else 0,
             },
-            "visible": has_bounds and left < right and top < bottom,
+            "visible": has_bounds and left < right and top < bottom and not hidden and alpha > 0.01,
             "enabled": raw_attrs.get("enabled", "true") == "true",
             "clickable": raw_attrs.get("clickable", "false") == "true",
             "scrollable": raw_attrs.get("scrollable", "false") == "true",
@@ -209,11 +218,31 @@ def _base36(value: int) -> str:
     return result
 
 
+def build_ref_token(secret: bytes, snapshot_id: str) -> str:
+    """快照 ref 令牌：hmac(secret, snapshotId) 前 10 位十六进制（Android/iOS 共用）。"""
+    return hmac.new(secret, snapshot_id.encode("utf-8"), hashlib.sha256).hexdigest()[:10]
+
+
+def build_refs(nodes: list[dict[str, object]], ref_token: str) -> dict[str, object]:
+    """nodeKey → ref（r{token}_{base36 序号}）；Android/iOS 共用。"""
+    return {node["nodeKey"]: f"r{ref_token}_{_base36(index)}" for index, node in enumerate(nodes)}
+
+
 class CaptureCoordinator:
     """原子抓取：冻结写队列 → dump → 截图 → 归一化 → 发布；幂等键复用结果。"""
 
-    def __init__(self, adb: AdbClient, registry: DeviceRegistry, store: SnapshotStore, gate: DeviceGate) -> None:
+    def __init__(
+        self,
+        adb: AdbClient,
+        registry: DeviceRegistry,
+        store: SnapshotStore,
+        gate: DeviceGate,
+        ios: IOSDeviceDriver | None = None,
+        simctl: SimctlClient | None = None,
+    ) -> None:
         self.adb = adb
+        self.ios = ios
+        self.simctl = simctl
         self.registry = registry
         self.store = store
         self.gate = gate
@@ -246,7 +275,10 @@ class CaptureCoordinator:
         }
 
     def _capture(self, device_id: str) -> dict[str, object]:
-        serial = self.registry.serial_for(device_id)
+        descriptor = self.registry.device(device_id)
+        if str(descriptor.get("platform")) == "ios":
+            return self._capture_ios(device_id, descriptor)
+        serial = str(descriptor["serial"])
         before = self._context(serial)
         xml_text: str | None = None
         hierarchy_error: CoreError | None = None
@@ -293,8 +325,8 @@ class CaptureCoordinator:
                     "contentUrl": f"/api/v1/snapshots/{snapshot_id}/screenshot",
                 }
 
-        ref_token = hmac.new(self.store._secret, snapshot_id.encode("utf-8"), hashlib.sha256).hexdigest()[:10]
-        refs = {node["nodeKey"]: f"r{ref_token}_{_base36(index)}" for index, node in enumerate(nodes)}
+        ref_token = build_ref_token(self.store._secret, snapshot_id)
+        refs = build_refs(nodes, ref_token)
 
         snapshot: dict[str, object] = {
             "snapshotId": snapshot_id,
@@ -319,3 +351,98 @@ class CaptureCoordinator:
             "refs": refs,
             "ref_token": ref_token,
         }
+
+    def _capture_ios(self, device_id: str, descriptor: dict[str, object]) -> dict[str, object]:
+        """iOS 抓取：Lookin XML → 既有 normalize_nodes → 与 Android 同构的 record。
+
+        extras（属性分组 + ivar 名）按 nodeKey 回填到节点；底图优先 203 拉的 key
+        window 真实渲染图（模拟器/真机通用），失败时模拟器回退 simctl、真机降级线框。
+        """
+        if self.ios is None:
+            raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取服务未装配。")
+        serial = str(descriptor["serial"])
+        result = self.ios.capture(serial)
+        xml_text = str(result.get("xml") or "")
+        window_size = self._ios_window_size(result)
+        nodes, elements, element_to_key = normalize_nodes(xml_text, window_size)
+
+        extras_by_key = result.get("extras") if isinstance(result.get("extras"), dict) else {}
+        for node in nodes:
+            extra = extras_by_key.get(str(node["nodeKey"]))
+            if extra is not None:
+                node["extras"] = extra
+
+        warnings = [str(item) for item in (result.get("warnings") or [])]
+        png = self._ios_screenshot(serial, result.get("screenshot"), warnings)
+
+        app = result.get("app")
+        app_map = dict(app) if isinstance(app, dict) else {}
+        foreground = {
+            "packageName": str(app_map.get("appBundleIdentifier") or app_map.get("appName") or "unknown"),
+            "appName": str(app_map.get("appName") or ""),
+        }
+
+        snapshot_id = f"snap-{uuid.uuid4().hex[:12]}"
+        screenshot_meta = None
+        if png is not None:
+            size = png_size(png)
+            if size is not None:
+                screenshot_meta = {
+                    "width": size[0],
+                    "height": size[1],
+                    "contentUrl": f"/api/v1/snapshots/{snapshot_id}/screenshot",
+                }
+            else:
+                warnings.append("模拟器截图数据无法解析（非 PNG），将以线框渲染。")
+
+        ref_token = build_ref_token(self.store._secret, snapshot_id)
+        refs = build_refs(nodes, ref_token)
+        snapshot: dict[str, object] = {
+            "snapshotId": snapshot_id,
+            "deviceId": device_id,
+            "createdAt": int(time.time() * 1000),
+            "foreground": foreground,
+            "windowSizePx": window_size,
+            "density": None,
+            "hierarchyAccuracy": "best_effort" if nodes else "limited",
+            "synchronization": "best_effort",
+            "screenshot": screenshot_meta,
+            "roots": [nodes[0]["nodeKey"]] if nodes else [],
+            "nodes": nodes,
+            "warnings": warnings,
+        }
+        return {
+            "snapshot": snapshot,
+            "png": png,
+            "xml": xml_text,
+            "elements": elements,
+            "element_to_key": element_to_key,
+            "refs": refs,
+            "ref_token": ref_token,
+        }
+
+    def _ios_screenshot(self, serial: str, driver_png: object, warnings: list[str]) -> bytes | None:
+        """画布底图：优先 driver 经 203 拉的 Lookin 窗口渲染图（模拟器/真机通用），
+        失败时模拟器回退 simctl 全屏 PNG，真机降级线框并提示。"""
+        if isinstance(driver_png, (bytes, bytearray)) and driver_png:
+            return bytes(driver_png)
+        if not serial.startswith(IOS_SIMULATOR_PREFIX):
+            warnings.append("iOS 真机渲染图拉取失败，将以线框渲染。")
+            return None
+        if self.simctl is None:
+            warnings.append("模拟器截图服务未装配，将以线框渲染。")
+            return None
+        png = self.simctl.screenshot()
+        if png is None:
+            warnings.append("模拟器截图失败（无唯一 booted 模拟器或 xcrun 不可用），将以线框渲染。")
+        return png
+
+    @staticmethod
+    def _ios_window_size(result: dict[str, object]) -> dict[str, int]:
+        """校验驱动返回的物理像素窗口尺寸（{width,height}），无效即失败。"""
+        raw = result.get("window_size")
+        width = int(raw.get("width") or 0) if isinstance(raw, dict) else 0
+        height = int(raw.get("height") or 0) if isinstance(raw, dict) else 0
+        if width <= 0 or height <= 0:
+            raise CoreError("LOOKIN_UNAVAILABLE", "iOS 抓取结果缺少有效窗口尺寸。", retryable=True)
+        return {"width": width, "height": height}

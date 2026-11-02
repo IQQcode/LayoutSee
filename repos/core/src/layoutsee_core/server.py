@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import __version__ as PRODUCT_VERSION
 from .contracts import CoreInfo
 from .errors import CoreError
 from .mcp_catalog import ToolDispatcher, catalog
@@ -55,6 +56,10 @@ SHELL_DEFAULT_TIMEOUT_MS = 15_000
 SHELL_MAX_TIMEOUT_MS = 60_000
 SHELL_OUTPUT_MAX_BYTES = 256 * 1024
 
+# iOS 设备恒只读：Lookin 协议无 tap/输入注入能力，写能力与媒体路由在分派层统一拦截
+IOS_READONLY_MESSAGE = "iOS 设备当前仅支持只读布局抓取，不支持截图/终端/操作。"
+IOS_MEDIA_MESSAGE = "iOS 设备暂不支持实时投屏，仅支持布局快照线框渲染。"
+
 
 def _clip_output(raw: bytes) -> tuple[str, bool]:
     truncated = len(raw) > SHELL_OUTPUT_MAX_BYTES
@@ -81,6 +86,8 @@ class CoreContext:
     media: Any = field(default=None)
     ui_log: Any = field(default=None)
     logcat: Any = field(default=None)
+    syslog: Any = field(default=None)
+    ios: Any = field(default=None)
 
 
 def derive_session_token(nonce: str) -> str:
@@ -321,6 +328,10 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 self._envelope({"snapshotId": record["snapshot"]["snapshotId"] if record else None, **({"synchronization": record["snapshot"]["synchronization"], "createdAt": record["snapshot"]["createdAt"]} if record else {})})
                 return
             if sub1 == "media" and sub2 == "capabilities":
+                # 媒体能力是全局单例；仅对已注册的 iOS 设备改报 none（未知设备保持既有行为）
+                if self._known_device_platform(device_id) == "ios":
+                    self._envelope(self._ios_media_capabilities())
+                    return
                 self._envelope(self._media_capabilities())
                 return
             if sub1 == "media" and sub2 == "stream":
@@ -331,12 +342,27 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
         if device_sub:
             device_id, sub = unquote(device_sub.group(1)), device_sub.group(2)
             if sub == "diagnostics":
+                if self._device_platform(device_id) == "ios":
+                    self._envelope(self._ios_diagnostics())
+                    return
                 self._envelope(self.context.adb.diagnostics(self.context.registry.serial_for(device_id)))
                 return
             if sub == "current-app":
+                if self._device_platform(device_id) == "ios":
+                    self._envelope(self._ios_foreground(device_id))
+                    return
                 self._envelope(self.context.adb.current_app(self.context.registry.serial_for(device_id)))
                 return
             if sub == "apps":
+                if self._device_platform(device_id) == "ios":
+                    params = parse_qs(urlparse(self.path).query)
+                    self._envelope({
+                        "items": [],
+                        "query": params.get("q", [""])[0],
+                        "includeSystem": params.get("includeSystem", ["false"])[0] in ("1", "true", "yes"),
+                        "note": "iOS 设备暂不支持应用列表查询。",
+                    })
+                    return
                 params = parse_qs(urlparse(self.path).query)
                 query = params.get("q", [""])[0]
                 include_system = params.get("includeSystem", ["false"])[0] in ("1", "true", "yes")
@@ -344,12 +370,17 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 self._envelope({"items": items, "query": query, "includeSystem": include_system})
                 return
             if sub == "screenshot":
+                self._ensure_not_ios(device_id)
                 self._png(self.context.adb.screenshot(self.context.registry.serial_for(device_id)))
                 return
             if sub == "window-size":
+                if self._device_platform(device_id) == "ios":
+                    self._envelope(self._ios_window_size(device_id))
+                    return
                 self._envelope(self.context.adb.window_size(self.context.registry.serial_for(device_id)))
                 return
             if sub == "logcat":
+                # iOS / Android 同形端点：平台分派在 _read_logcat 内完成
                 params = parse_qs(urlparse(self.path).query)
                 after = params.get("after", [""])[0]
                 limit = params.get("limit", ["500"])[0]
@@ -425,6 +456,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             device_id, sub = unquote(device_sub.group(1)), device_sub.group(2)
             if sub == "actions":
                 self._require_session()
+                self._ensure_not_ios(device_id)
                 self._envelope(self._execute_action(device_id, self._read_body()))
                 return
             if sub == "snapshots":
@@ -434,11 +466,15 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 return
             if sub == "readonly":
                 self._require_session()
+                if self._device_platform(device_id) == "ios":
+                    # iOS 恒只读：不放行切换，避免 descriptor 被翻转直到下轮刷新才被覆写
+                    raise CoreError("READ_ONLY_MODE", "iOS 设备恒为只读。", status=HTTPStatus.FORBIDDEN)
                 body = self._read_body()
                 self._envelope(self.context.registry.set_readonly(device_id, bool(body.get("readonly"))))
                 return
             if sub == "shell":
                 self._require_session()
+                self._ensure_not_ios(device_id)
                 self._envelope(self._execute_shell(device_id, self._read_body()))
                 return
         device_sub2 = DEVICE_SUB2_PATTERN.match(path)
@@ -446,6 +482,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             device_id, sub1, sub2 = (unquote(part) for part in device_sub2.groups())
             if sub1 == "logcat" and sub2 == "clear":
                 self._require_session()
+                # iOS 分派在 _clear_logcat 内：本地缓冲清空不属于设备写，不受恒只读拦截
                 self._envelope(self._clear_logcat(device_id, self._read_body()))
                 return
         snapshot_sub = SNAPSHOT_SUB_PATTERN.match(path)
@@ -541,6 +578,70 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
 
     # ---------- 业务处理 ----------
 
+    def _device_platform(self, device_id: str) -> str:
+        """读取设备平台；未知设备由 registry.device 抛 DEVICE_NOT_FOUND。"""
+        return str(self.context.registry.device(device_id).get("platform") or "android")
+
+    def _known_device_platform(self, device_id: str) -> str | None:
+        """平台查询的宽容版：未知/离线设备返回 None，用于保持既有路由的宽容行为。"""
+        try:
+            return self._device_platform(device_id)
+        except CoreError:
+            return None
+
+    def _ensure_not_ios(self, device_id: str) -> None:
+        """iOS 设备恒只读：写能力与媒体路由在分派层直接拦截。"""
+        if self._device_platform(device_id) == "ios":
+            raise CoreError("READ_ONLY_MODE", IOS_READONLY_MESSAGE)
+
+    def _ios_window_size(self, device_id: str) -> dict[str, object]:
+        """iOS 窗口尺寸随抓取返回：从最新快照读取，无快照引导先抓取（404）。"""
+        record = self.context.store.latest_for(device_id)
+        if record is None:
+            raise CoreError(
+                "SNAPSHOT_STALE",
+                "iOS 设备窗口尺寸随首次抓取返回，请先抓取。",
+                status=HTTPStatus.NOT_FOUND,
+                details={"deviceId": device_id},
+            )
+        size = record["snapshot"].get("windowSizePx")
+        return dict(size) if isinstance(size, dict) else {}
+
+    def _ios_foreground(self, device_id: str) -> dict[str, object]:
+        """iOS 前台 App 信息随快照返回（Lookin 协议无独立查询入口），无快照抛 409。"""
+        record = self.context.store.latest_for(device_id)
+        if record is None:
+            raise CoreError(
+                "LOOKIN_APP_NOT_FOUND",
+                "iOS 前台 App 信息随首次抓取返回，请先抓取。",
+                details={"deviceId": device_id},
+            )
+        foreground = record["snapshot"].get("foreground")
+        return dict(foreground) if isinstance(foreground, dict) else {}
+
+    def _ios_diagnostics(self) -> dict[str, object]:
+        """iOS 无 adb 诊断链路：返回稳定结构，链路健康度随抓取 warnings 观察。"""
+        return {
+            "platform": "ios",
+            "checks": [{
+                "name": "lookinServer",
+                "status": "unknown",
+                "message": "iOS 链路状态随布局抓取的 warnings 返回，请先抓取一次。",
+                "hint": "",
+            }],
+            "healthy": True,
+        }
+
+    def _ios_media_capabilities(self) -> dict[str, object]:
+        """iOS 无投屏/截图链路：键结构与 media.capabilities() 对齐，mode=none。"""
+        return {
+            "mode": "none",
+            "live": False,
+            "reason": IOS_MEDIA_MESSAGE,
+            "scrcpyVersion": None,
+            "screenshotIntervalMs": 0,
+        }
+
     def _execute_action(self, device_id: str, body: dict[str, object]) -> dict[str, object]:
         action_type = str(body.get("type", ""))
         allowed = {"tap", "swipe", "input_text", "press_key", "start_app", "stop_app", "rotate", "clear_app", "uninstall_app"}
@@ -627,14 +728,22 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
             raise CoreError("CORE_UNAVAILABLE", "日志读取未装配。")
         return hub
 
+    def _syslog_hub(self) -> Any:
+        hub = self.context.syslog
+        if hub is None:
+            raise CoreError("CORE_UNAVAILABLE", "日志读取未装配。")
+        return hub
+
     def _read_logcat(self, device_id: str, after: str, limit: str) -> dict[str, object]:
-        """读日志是只读操作：不过设备闸门、不入审计，只做参数收敛。"""
+        """读日志是只读操作：不过设备闸门、不入审计，只做参数收敛；iOS 走 SyslogHub。"""
         try:
             cursor = int(after) if after not in ("", None) else None
             count = int(limit)
         except (TypeError, ValueError):
             raise CoreError("INVALID_ARGUMENT", "after / limit 必须是整数。") from None
         serial = self.context.registry.serial_for(device_id)
+        if self._device_platform(device_id) == "ios":
+            return self._syslog_hub().read(device_id, serial, after=cursor, limit=count)
         return self._logcat_hub().read(device_id, serial, after=cursor, limit=count)
 
     def _clear_logcat(self, device_id: str, body: dict[str, object]) -> dict[str, object]:
@@ -644,6 +753,19 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
         plugin_id = str(body.get("pluginId") or "") or None
         action_id = str(body.get("actionId") or uuid.uuid4().hex[:12])
         request_id = self._request_id()
+        if self._device_platform(device_id) == "ios":
+            # iOS 恒只读铁律针对的是设备注入/修改；iOS clear 只重置 Core 本地缓冲并重连流，
+            # 不触碰设备状态，因此放在只读拦截之前放行，照常写 allowed 审计。
+            serial = self.context.registry.serial_for(device_id)
+            self.context.audit.requested(action_id=action_id, source=source, device_id=device_id, action_type="logcat_clear", payload={}, request_id=request_id, decision="allowed", plugin_id=plugin_id)
+            started = time.monotonic()
+            try:
+                result = self._syslog_hub().clear(device_id, serial)
+            except CoreError as error:
+                self.context.audit.result(action_id=action_id, result_code=error.code, duration_ms=int((time.monotonic() - started) * 1000), request_id=request_id)
+                raise
+            self.context.audit.result(action_id=action_id, result_code="ok", duration_ms=int((time.monotonic() - started) * 1000), request_id=request_id)
+            return {"actionId": action_id, **result}
         # 清空设备日志会丢掉别人正在看的数据，按写操作对待：只读拦截 + 审计
         if self.context.registry.is_readonly(device_id):
             self.context.audit.requested(action_id=action_id, source=source, device_id=device_id, action_type="logcat_clear", payload={}, request_id=request_id, decision="blocked-readonly", plugin_id=plugin_id)
@@ -681,6 +803,8 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
 
     def _media_stream(self, device_id: str) -> None:
         """scrcpy H.264 记录流：头 LSS1(4s) + width/height/fps(u32)，之后每帧 [pts u64][len u32][payload]。"""
+        if self._device_platform(device_id) == "ios":
+            raise CoreError("MEDIA_UNAVAILABLE", IOS_MEDIA_MESSAGE)
         if self.context.media is None:
             raise CoreError("MEDIA_UNAVAILABLE", "媒体服务未装配。")
         serial = self.context.registry.serial_for(device_id)
@@ -868,7 +992,7 @@ class CoreRequestHandler(BaseHTTPRequestHandler):
                 response["result"] = {
                     "protocolVersion": str(params.get("protocolVersion") or "2024-11-05"),
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "layoutsee", "version": "22.6.1"},
+                    "serverInfo": {"name": "layoutsee", "version": PRODUCT_VERSION},
                 }
             elif method == "notifications/initialized":
                 self._json(HTTPStatus.ACCEPTED, {})

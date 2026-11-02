@@ -143,6 +143,15 @@ async function pythonVersion(arch) {
 
 // 决策门结论：onefile 在本机每次启动都要 7-8 秒自解压（19.9s 首启动，超过 15s 硬超时）。
 // onedir 首启动 8.1s、热启动 0.27s，按 technical-design.md §23.2 切换到 onedir。
+async function gitBuildId() {
+  try {
+    const { stdout } = await exec("git", ["rev-parse", "--short", "HEAD"], { cwd: workspaceRoot });
+    return stdout.trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function stageAndManifest(arch) {
   await rm(runtimeRoot, { recursive: true, force: true });
   await mkdir(resolve(runtimeRoot, "core"), { recursive: true });
@@ -152,6 +161,9 @@ async function stageAndManifest(arch) {
   await cp(resolve(coreBundle, "_internal"), resolve(runtimeRoot, "core/_internal"), { recursive: true });
   const coreExecutable = resolve(runtimeRoot, "core/layoutsee-core");
   await chmod(coreExecutable, 0o755);
+  // 构建序列号：git 短哈希，core 启动时读可执行文件旁的 build-id 上报给 Web 标题栏
+  const buildId = await gitBuildId();
+  await writeFile(resolve(runtimeRoot, "core/build-id"), `${buildId}\n`);
 
   const packageJson = JSON.parse(await readFile(resolve(macRoot, "package.json"), "utf8"));
   const webFiles = await listFiles(resolve(runtimeRoot, "web"));
@@ -163,6 +175,7 @@ async function stageAndManifest(arch) {
   const manifest = {
     schemaVersion: "1.0",
     productVersion: packageJson.version,
+    buildId,
     apiVersion: "1.0",
     snapshotSchemaVersion: "1.0",
     targetArch: arch,

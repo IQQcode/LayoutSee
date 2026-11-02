@@ -1,5 +1,5 @@
 # 此文件由 contracts:generate 自动生成，禁止手改。
-# schema sha256: 8be3449bda9e4531d63d8592b214f2f82613123444b9663b1b15950b4f15ed51
+# schema sha256: acd52ff88d020bb825cb6e40e3701e9497af63aa63bb2dcd9796a88b315dd5c4
 
 from __future__ import annotations
 
@@ -20,14 +20,15 @@ class CoreInfo(BaseModel):
     port: int
     pid: int
     nonce: str
-    productVersion: Literal["22.6.1"]
+    productVersion: Literal["22.7.0"]
+    buildId: Optional[str] = None
     apiVersion: Literal["1.0"]
     snapshotSchemaVersion: Literal["1.0"]
 
 class Device(BaseModel):
     model_config = ConfigDict(extra="forbid")
     deviceId: str
-    platform: Literal["android"]
+    platform: Literal["android", "ios"]
     serial: str
     model: Optional[str] = None
     product: Optional[str] = None
@@ -243,6 +244,28 @@ class LayoutSnapshotLayoutNode(BaseModel):
     scrollable: bool
     drawingOrder: Optional[int] = None
     raw: dict[str, Any]
+    extras: Optional[LayoutSnapshotNodeExtras] = None
+
+class LayoutSnapshotNodeExtras(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ivar: Union[str, None]
+    groups: list[LayoutSnapshotAttrGroup]
+
+class LayoutSnapshotAttrGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    sections: list[LayoutSnapshotAttrSection]
+
+class LayoutSnapshotAttrSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    attributes: list[LayoutSnapshotAttrItem]
+
+class LayoutSnapshotAttrItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identifier: str
+    type: int
+    value: dict[str, Any]
 
 class LayoutSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")

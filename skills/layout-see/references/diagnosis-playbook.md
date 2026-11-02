@@ -1,6 +1,6 @@
 # LayoutSee 布局诊断模板
 
-`diagnose_layout` 已内置六类量化诊断（`overlap`、`occlusion`、`out_of_bounds`、`small_touch_target`、`text_truncation`、`invisible_interactive`），返回 `findings` 数组，每条含 `type`、`severity`、`nodeKey`、`evidence`、`suggestion`。本模板用于解读这些结论、人工复核，以及 diagnose 未覆盖的场景。所有判断基于 `get_layout` 的 `boundsPx` 与 `parentKey`。
+`diagnose_layout` 已内置六类量化诊断（`overlap`、`occlusion`、`out_of_bounds`、`small_touch_target`、`text_truncation`、`invisible_interactive`），返回 `findings` 数组，每条含 `type`、`severity`、`nodeKey`、`evidence`、`suggestion`。本模板用于解读这些结论、人工复核，以及 diagnose 未覆盖的场景。所有判断基于 `get_layout` 的 `boundsPx` 与 `parentKey`。诊断引擎双端通用；证据检索时注意 iOS 无 resourceId，替代物是 extras 的 ivar 名与自定义类名。
 
 ## 重叠与遮挡（overlap / occlusion）
 
@@ -52,7 +52,7 @@
 
 检查：
 
-- 相同 resourceId 是否出现在多个 item。
+- 相同 resourceId 是否出现在多个 item（iOS 无 resourceId，用相同 className 与相近 boundsPx 的重复节点识别）。
 - item boundsPx 是否重复、重叠或残留在屏幕外。
 - visible、enabled 等状态是否与当前位置一致。
 - 诊断结论结合 item 的 parentKey 链和 childIndex 证据。

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.0",
+  "id": "ios-logcat",
+  "name": "iOS日志抓取",
+  "description": "增量抓取 iOS 真机与模拟器日志：进程/pid/级别过滤、暂停继续、清空显示、自动滚动与换行，交互对齐 Android Studio",
+  "version": "1.0.0",
+  "engines": { "layoutsee": ">=22.7.0 <23.0.0" },
+  "hosts": ["app"],
+  "devicePlatforms": ["ios"],
+  "activation": "onOpen",
+  "runtime": "iframe",
+  "permissions": ["device.read", "storage.local", "host.integration"],
+  "contributions": {
+    "workbenchTabs": [
+      { "id": "logcat", "title": "日志抓取", "icon": "terminal", "entry": "index.html", "order": 301 }
+    ]
+  }
+}

@@ -152,8 +152,24 @@ class ToolDispatcher:
         return self._record(device_id)
 
     def _tool_get_device_info(self, device_id: str, arguments: dict[str, object]) -> dict[str, object]:
-        serial = self._require_device(device_id)
         descriptor = self.registry.device(device_id)
+        if str(descriptor.get("platform")) == "ios":
+            record = self.store.latest_for(device_id)
+            if record is None:
+                raise CoreError("SNAPSHOT_STALE", "iOS 设备窗口尺寸随首次抓取返回，请先调用 capture_layout。")
+            size = record["snapshot"]["windowSizePx"]
+            return {
+                "deviceId": device_id,
+                "platform": "ios",
+                "serial": descriptor["serial"],
+                "model": descriptor.get("model", ""),
+                "status": descriptor["status"],
+                "readonly": True,
+                "windowSizePx": size,
+                "density": None,
+                "orientation": "landscape" if size["width"] > size["height"] else "portrait",
+            }
+        serial = str(descriptor["serial"])
         size = self.adb.window_size(serial)
         return {
             "deviceId": device_id,
@@ -168,8 +184,14 @@ class ToolDispatcher:
         }
 
     def _tool_get_current_app(self, device_id: str, arguments: dict[str, object]) -> dict[str, object]:
-        serial = self._require_device(device_id)
-        return self.adb.current_app(serial)
+        descriptor = self.registry.device(device_id)
+        if str(descriptor.get("platform")) == "ios":
+            record = self.store.latest_for(device_id)
+            if record is None:
+                raise CoreError("LOOKIN_APP_NOT_FOUND", "iOS 前台 App 信息随首次抓取返回，请先调用 capture_layout。")
+            foreground = record["snapshot"].get("foreground")
+            return dict(foreground) if isinstance(foreground, dict) else {}
+        return self.adb.current_app(str(descriptor["serial"]))
 
     def _tool_capture_layout(self, device_id: str, arguments: dict[str, object]) -> dict[str, object]:
         record = self.capture.capture(device_id)
@@ -199,8 +221,16 @@ class ToolDispatcher:
             record = self.store.get(str(arguments["snapshotId"]))
             png = record.get("png")
         else:
-            serial = self._require_device(device_id)
-            png = self.adb.screenshot(serial)
+            descriptor = self.registry.device(device_id)
+            if str(descriptor.get("platform")) == "ios":
+                record = self.store.latest_for(device_id)
+                if record is None:
+                    raise CoreError("SNAPSHOT_STALE", "iOS 截图随首次抓取返回，请先调用 capture_layout。")
+                png = record.get("png")
+                if not png:
+                    raise CoreError("MEDIA_UNAVAILABLE", "iOS 无实时截图链路且本次快照没有渲染底图，请重新 capture_layout。", retryable=True)
+            else:
+                png = self.adb.screenshot(str(descriptor["serial"]))
         if not png:
             raise CoreError("MEDIA_UNAVAILABLE", "截图不可用。", retryable=True)
         return {"contentType": "image/png", "base64": base64.b64encode(png).decode("ascii"), "bytes": len(png)}

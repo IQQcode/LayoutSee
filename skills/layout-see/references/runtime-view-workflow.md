@@ -36,9 +36,9 @@ Core 已归一化，直接使用：
 
 ### 3. 查询
 
-用 `find_element`（text、描述、resource-id）或 `query_xpath`（结构表达式）定位，也可在 `get_layout` 节点树里按属性筛。可用维度：resourceId、className、text、contentDescription、boundsPx、clickable、scrollable、enabled、visible、父子兄弟。
+用 `find_element`（text、描述、resource-id）或 `query_xpath`（结构表达式）定位，也可在 `get_layout` 节点树里按属性筛。可用维度：resourceId、className、text、contentDescription、boundsPx、clickable、scrollable、enabled、visible、父子兄弟。iOS 无 resource-id，定位证据用 extras 的 ivar 名、自定义类名（ObjC 类名）与文案。
 
-相同 resourceId 多次出现时，结合 parentKey 链、childIndex、text 和 boundsPx 消歧。
+相同 resourceId 多次出现时，结合 parentKey 链、childIndex、text 和 boundsPx 消歧。iOS 无 resourceId，用 ivar 名、自定义类名、text 和父链消歧。
 
 ### 4. 解释
 
@@ -50,7 +50,7 @@ Core 已归一化，直接使用：
 
 ### 6. 源码关联
 
-按 resourceId、自定义 View className、Activity 或 Fragment、可见文案、父容器与业务模块名称搜索 owner。输出候选、命中证据和置信度。没有唯一证据时不宣称已确定 owner。
+按 resourceId、自定义 View className、Activity 或 Fragment、可见文案、父容器与业务模块名称搜索 owner（iOS 按 ivar 名、自定义类名（非 UI/NS/_/CA/CF 前缀的 ObjC 类）与可见文案搜索）。输出候选、命中证据和置信度。没有唯一证据时不宣称已确定 owner。
 
 ### 7. 验证
 
@@ -59,13 +59,13 @@ Core 已归一化，直接使用：
 ## 输出模板
 
 ```text
-页面：<packageName / activity / 标题>
+页面：<packageName / activity（iOS 无） / 标题>
 数据源：<MCP server 名 或 直连端点>，snapshotId=<id>
 采集时间：<timestamp>
 
 目标节点：
 className：...
-resourceId：...
+resourceId：...（iOS 恒为空，标注 extras 的 ivar 名/自定义类名）
 boundsPx：...
 尺寸：...
 交互属性：...

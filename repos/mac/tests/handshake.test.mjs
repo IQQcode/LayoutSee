@@ -7,7 +7,7 @@ const readyValue = Object.freeze({
   port: 11663,
   pid: 1234,
   nonce,
-  productVersion: "22.6.1",
+  productVersion: "22.7.0",
   apiVersion: "1.0",
   snapshotSchemaVersion: "1.0",
 });

@@ -46,21 +46,32 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   const pointerInfoAt = useRef(0);
   const deviceId = device?.deviceId;
   const snapshotView = viewMode === "snapshot" && snapshot?.data;
-  const liveActive = mediaMode === "live" && device?.status === "connected" && !snapshotView;
+  // 实时画面（scrcpy 流 / 截图轮询）只有 Android 链路具备：iOS 恒走快照 wireframe，双保险防误开流
+  const androidLive = device?.platform === "android";
+  const liveActive = mediaMode === "live" && androidLive && device?.status === "connected" && !snapshotView;
 
   // 媒体能力：决定 scrcpy 实时流或截图轮询
   useEffect(() => {
     let active = true;
     retriesRef.current = 0;
     setMediaMode("loading");
+    // 换设备即清空上一台的画面状态：旧截图/错误/宽高不得残留到新设备画布
+    if (objectUrl.current) {
+      URL.revokeObjectURL(objectUrl.current);
+      objectUrl.current = null;
+    }
+    setFrame(null);
+    setFrameError(null);
+    setDims({ width: 0, height: 0 });
     api.settings().then((store) => {
       if (active) setIntervalMs(Math.min(3000, Math.max(400, store.screenshotFallbackIntervalMs ?? 800)));
     }).catch(() => {});
     api.mediaCapabilities(deviceId).then((payload) => {
       if (!active) return;
-      const mode = payload?.mode === "scrcpy" && payload?.live ? "live" : "screenshot";
+      // iOS 返回 mode="none"：既非实时流也非截图轮询，只走快照 wireframe
+      const mode = payload?.mode === "scrcpy" && payload?.live ? "live" : payload?.mode === "none" ? "none" : "screenshot";
       setMediaMode(mode);
-      uiLog(LogTags.media, `媒体模式：${mode === "live" ? "scrcpy 实时投屏" : "截图轮询"}`, "info", deviceId);
+      uiLog(LogTags.media, `媒体模式：${mode === "live" ? "scrcpy 实时投屏" : mode === "none" ? "无实时画面（快照模式）" : "截图轮询"}`, "info", deviceId);
     }).catch(() => {
       if (active) setMediaMode("screenshot");
     });
@@ -141,7 +152,8 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
         setFrameError(error);
       }
     };
-    if (!liveActive && !snapshotView && device?.status === "connected" && !frozen) {
+    // 截图轮询仅 Android：iOS 没有 screenshot 端点能力，轮询只会吃 403
+    if (androidLive && !liveActive && !snapshotView && device?.status === "connected" && !frozen) {
       tick();
       timer = setInterval(tick, intervalMs);
     }
@@ -149,7 +161,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
       active = false;
       clearInterval(timer);
     };
-  }, [liveActive, snapshotView, device?.deviceId, device?.status, intervalMs, frozen]);
+  }, [liveActive, snapshotView, device?.deviceId, device?.status, device?.platform, intervalMs, frozen]);
 
   useEffect(() => {
     viewerRef.current?.setFrozen(Boolean(frozen));
@@ -242,6 +254,11 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   }, [snapshot, highlights, snapshotView]);
 
   const sendAction = async (action) => {
+    // 非 Android 平台没有注入链路：入口直接拦截，不发起注定 403 的请求
+    if (!androidLive) {
+      onToast?.("iOS 设备暂不支持操作指令", "warning");
+      return;
+    }
     if (readonly) {
       onToast?.("只读模式已开启，写操作被拦截", "warning");
       return;
@@ -355,7 +372,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
   const showPollingFrame = !liveActive && !snapshotView;
   const liveLabel = snapshotView
     ? "布局查看"
-    : frozen ? "已冻结" : inspect ? "审查模式" : readonly ? "只读模式" : liveActive ? "实时投屏" : "截图模式";
+    : frozen ? "已冻结" : inspect ? "审查模式" : readonly ? "只读模式" : liveActive ? "实时投屏" : androidLive ? "截图模式" : "快照模式";
   const labelTone = frozen ? "frozen" : inspect ? "inspect" : readonly ? "readonly" : "";
 
   return (
@@ -363,7 +380,7 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
       <div className="device-viewport">
         <div
           ref={frameRef}
-          className={`device-frame ${snapshotView ? "snapshot" : ""} ${dims.width > dims.height ? "landscape" : ""}`}
+          className={`device-frame ${snapshotView ? "snapshot" : ""} ${dims.width > dims.height ? "landscape" : ""} ${snapshotView && highlights && Object.keys(highlights).length ? "has-selection" : ""}`}
           style={{ width: frameSize?.width ?? undefined, height: frameSize?.height ?? undefined, aspectRatio: frameSize ? undefined : renderAspect, touchAction: "none" }}
           tabIndex={0}
           role="img"
@@ -384,8 +401,8 @@ export function DeviceCanvas({ device, snapshot, viewMode = "live", readonly, fr
             aria-hidden="true"
           />
           {snapshotView && contentUrl ? <img className="device-pixel" src={contentUrl} alt="快照画面" draggable="false" /> : null}
-          {showPollingFrame && frame ? <img className="device-pixel" src={frame} alt="" onLoad={(event) => setDims({ width: event.target.naturalWidth, height: event.target.naturalHeight })} draggable="false" /> : null}
-          {showPollingFrame && !frame && !frameError ? <span className="frame-placeholder">正在获取画面…</span> : null}
+          {androidLive && showPollingFrame && frame ? <img className="device-pixel" src={frame} alt="" onLoad={(event) => setDims({ width: event.target.naturalWidth, height: event.target.naturalHeight })} draggable="false" /> : null}
+          {showPollingFrame && !frame && !frameError ? <span className="frame-placeholder">{androidLive ? "正在获取画面…" : "暂无实时画面，抓取快照后查看布局"}</span> : null}
           {showPollingFrame && frameError ? <span className="frame-placeholder"><Info size={16} />画面获取失败，将自动重试</span> : null}
           {snapshot ? nodeOverlays() : null}
           <span className={`stream-badge ${labelTone}`}>
