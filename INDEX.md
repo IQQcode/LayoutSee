@@ -64,7 +64,7 @@
 
 | 文件 | 职责 | 关键点 |
 |---|---|---|
-| `main.jsx` | 入口 + 路由：`/devices`、`/group`、`/settings`、`/devices/:id/workbench/:tab` | 启动时 `wireLogging()` |
+| `main.jsx` | 入口 + 路由：`/devices`、`/group`、`/settings`、`/devices/:id/workbench/:tab` | 启动时 `wireLogging()`；Routes 旁全局挂载首启弹窗 `AgentIntroDialog`（覆盖 WorkbenchPage 路由） |
 | `api/client.js` | fetch 封装 + api 对象（全部端点） | 令牌注入 `X-LayoutSee-Session`；**网络层日志**：非 2xx 记 `[LayoutSee][网络]`，`/api/v1/ui-logs` 豁免防递归 |
 | `api/logger.js` | 统一 Tag 日志 `[LayoutSee][Tab名]` | `uiLog/uiLogApi/LogTags`；1.5s 批量上报；上报通道由 LoggingBridge 注入（避免循环依赖） |
 | `media/scrcpyStream.js` | ScrcpyViewer：拉流 → 解析 → WebCodecs 解码 → canvas | **avcC description 长度必须精确**（多 1 字节 Chromium 零输出且无报错）；丢帧后等关键帧；解码器错误自愈；pts 取低 48 位 |
@@ -86,7 +86,8 @@
 | `public/favicon.ico` / `favicon-*.png` / `apple-touch-icon-180x180.png` / `layoutsee-icon-192.png` | 站点图标与品牌 logo | 引用点：`index.html`（favicon 链接）、`AppShell.jsx` / `WorkbenchPage.jsx` 的 `.brand-mark`；切图源头在 `docs/designs/logo/exports/` |
 | `features/devices/DevicesPage.jsx` | 设备表格 + 平台 Tab（Android / iOS / HarmonyOS） | 操作列 sticky right 12px 同宽 150px 中心对齐；**行底色必须用不透明的 `--ls-color-row-bg(-hover)`**，粘性列 `background-color: inherit`——父子各画一层半透明 hover 会叠出灰条；空状态挂 `device-empty`（+`scanning`）类：背景极光柔光漂移（径向渐变实现，**勿改回 filter: blur——大面积模糊动画会拖垮合成器**）+ 声呐扫描环传达「尚未连接、自动发现中」+ 指引步骤错峰入场（`.setup-guide` 左对齐），ADB 缺失时去掉 `scanning` 不装作在扫 |
 | `features/devices/PlatformPlaceholder.jsx` | iOS / HarmonyOS 未开放平台占位面板 | 逐词模糊入场（BlurText 风格，`step` 控制错峰：标题 90ms、长段落 26ms）+ `background-clip: text` 光泽扫过（ShinyText 风格）；参考 reactbits 但**纯 CSS 实现，不引 motion**；reduced-motion 下降级静态 |
-| `features/settings/SettingsPage.jsx` | 设置页 | `save(patch)` **只发补丁**，不回传整个对象 |
+| `features/settings/SettingsPage.jsx` | 设置页 | `save(patch)` **只发补丁**，不回传整个对象；Agent 分区展示三个随包 Skill 与 MCP 状态（卡片/复制提示词，复用 `content-card` 与 `code-card` 范式） |
+| `features/onboarding/AgentIntroDialog.jsx` + `agentSkills.js` | 首启 Agent 能力弹窗 + 弹窗/设置分区共用数据 | 判定纯函数 `shouldShowIntro`（会话 ready + `settings.agentIntroSeen=false` + localStorage 兜底未标记，切片测试 `tests/agent-intro.test.mjs`）；关闭时 PUT settings 并写 `layoutsee.agentIntroSeen`；no_session 只读模式不弹 |
 | `features/group-preview/GroupPreviewPage.jsx` | 群控预览（截图轮询，未接 scrcpy） | |
 
 ### styles/
@@ -104,7 +105,7 @@
 
 ## repos/mac — Electron 壳（进程守护 + 安全边界，无业务逻辑）
 
-`npm --workspace @layoutsee/mac run package:mac` 产 DMG（默认本机架构）；`package:mac:all` 一次出 arm64 + x64 两套并归档到 `release/mac-arm64/`、`release/mac-x64/`（DMG 与解包 .app 同目录）。系统要求 macOS ≥ 13.0（Electron 44 下限，`electron-builder.yml` 钉死），Intel 装 `mac-x64/`、Apple Silicon 装 `mac-arm64/`。
+`npm --workspace @layoutsee/mac run package:mac` 产 DMG（默认本机架构）；`package:mac:all` 一次出 arm64 + x64 两套并归档到 `release/mac-arm64/`、`release/mac-x64/`（DMG 与解包 .app 同目录）。系统要求 macOS ≥ 13.0（Electron 44 下限，`electron-builder.yml` 钉死），Intel 装 `mac-x64/`、Apple Silicon 装 `mac-arm64/`。22.8 起含体积优化三件套（.lproj 裁剪 / PyInstaller strip / DMG 转 ULMO），前后基线见 `specs/22_8_package_size/summary.md`；单打 x64 用 `npm --workspace @layoutsee/mac run package:mac:x64`（根级无此 script）。
 
 ### src/
 
@@ -119,9 +120,9 @@
 
 ### scripts/
 
-- `package.mjs` — 打包链（`--arch arm64|x64|all`，缺省本机架构）：web build → 按 arch 构建 PyInstaller onedir（arm64 走 uv 环境；x64 在 arm64 构建机用 python-build-standalone x86_64 解释器经 Rosetta 产出，缓存 `mac/build/python-x64/`，`PBS_MIRROR` 换源；**`--add-data` 打入 scrcpy jar 与 `repos/plugins` → 包内 `layoutsee_core/builtin_plugins`**）→ 资源暂存 → manifest（含 scrcpy 版本/哈希/许可证）→ electron-builder DMG（arch 由 CLI 下发，配置里不固定）。网络波动时用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 前缀重试
+- `package.mjs` — 打包链（`--arch arm64|x64|all`，缺省本机架构）：web build → 按 arch 构建 PyInstaller onedir（arm64 走 uv 环境；x64 在 arm64 构建机用 python-build-standalone x86_64 解释器经 Rosetta 产出，缓存 `mac/build/python-x64/`，`PBS_MIRROR` 换源；**`--add-data` 打入 scrcpy jar 与 `repos/plugins` → 包内 `layoutsee_core/builtin_plugins`**；`--strip` + `--exclude-module setuptools` 瘦身）→ 资源暂存 → manifest（含 scrcpy 版本/哈希/许可证）→ electron-builder DMG（arch 由 CLI 下发，配置里不固定）→ **UDZO 转 ULMO 后处理**（`hdiutil convert`，-o 输出名必须带 `.dmg` 后缀否则自动补缀致 rename ENOENT；blockmap 已停生成）。网络波动时用 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/` 前缀重试
 - `assets/LayoutSee-1024.png` — 应用图标唯一事实源（白底圆角方版，切图取自 `docs/designs/logo/exports/2026-09-04-white-macos/`）；`build/` 下 iconset/icns 均为打包时再生产物，勿手改；bootstrap 启动页 logo 以 data URI 内嵌在 `src/bootstrap/index.html`（透明底 M，该页 CSP 只放行 `img-src data:`）
-- `build.mjs` / `lint.mjs` / `after-pack.cjs`
+- `build.mjs` / `lint.mjs` / `after-pack.cjs` — after-pack 做 Info.plist 修正 + **`.lproj` 裁剪**（保留 `en.lproj`/`zh_CN.lproj`/`zh_TW.lproj`，删 Electron 44 的 44 语言×性别变体约 48MB locale.pak；app 顶层与 Electron Framework 内两处）
 
 ### tests/
 

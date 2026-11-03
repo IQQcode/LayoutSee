@@ -16,6 +16,7 @@ DEFAULTS: dict[str, object] = {
     "videoFpsCap": 30,
     "mediaReconnectAttempts": 3,
     "defaultReadonly": False,
+    "agentIntroSeen": False,
 }
 
 UPDATABLE_KEYS = {
@@ -26,6 +27,7 @@ UPDATABLE_KEYS = {
     "videoFpsCap": (5, 60),
     "mediaReconnectAttempts": (1, 10),
     "defaultReadonly": None,
+    "agentIntroSeen": None,
 }
 
 # 文件格式版本等系统字段随持久化自动维护，不在用户可改范围；提交补丁时静默忽略

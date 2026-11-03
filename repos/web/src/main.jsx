@@ -10,6 +10,7 @@ import { initTheme, loadThemePreference } from "./app/theme.js";
 import { ToastProvider } from "./components/ui.jsx";
 import { DevicesPage } from "./features/devices/DevicesPage.jsx";
 import { GroupPreviewPage } from "./features/group-preview/GroupPreviewPage.jsx";
+import { AgentIntroDialog } from "./features/onboarding/AgentIntroDialog.jsx";
 import { SettingsPage } from "./features/settings/SettingsPage.jsx";
 import { WorkbenchPage } from "./features/workbench/WorkbenchPage.jsx";
 import "./styles/tokens.css";
@@ -38,6 +39,8 @@ function App() {
             <Route path="/devices/:deviceId/workbench/:tab" element={<WorkbenchPage />} />
             <Route path="*" element={<Navigate to="/devices" replace />} />
           </Routes>
+          {/* 应用级首启弹窗：挂在 Routes 旁以覆盖全部路由（含 WorkbenchPage） */}
+          <AgentIntroDialog />
         </BrowserRouter>
       </ToastProvider>
     </GlobalErrorBoundary>

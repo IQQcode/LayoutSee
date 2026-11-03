@@ -3,11 +3,12 @@
 // 图标数据来自 `lucide`（数据，不是组件）——morphicons 要求描边中心线图标集。
 import { MorphIcon } from "morphicons/react";
 import {
-  Apple, ArrowLeft, Blocks, Camera, CircleCheck, Code, CodeXml, Cog, Crosshair,
-  Grid2x2Check, Hexagon, House, Layers, LayoutDashboard, LayoutGrid, LoaderCircle,
-  Lock, LockOpen, MousePointerClick, Plug, PlugZap, Power, Puzzle, RotateCcw,
-  RotateCw, Settings, Settings2, Smartphone, SmartphoneCharging, Snowflake,
-  Sparkle, Sparkles, Sun, Volume1, Volume2,
+  Apple, ArrowLeft, BadgeInfo, Blocks, Bot, BotMessageSquare, Cable, Camera, Cast,
+  CircleCheck, Code, CodeXml, Cog, Crosshair, Grid2x2Check, Hexagon, House, Info,
+  Layers, LayoutDashboard, LayoutGrid, LoaderCircle, Lock, LockOpen, MousePointerClick,
+  PaintBucket, Palette, Plug, PlugZap, Power, Puzzle, RotateCcw, RotateCw, ScanEye,
+  ScreenShare, Settings, Settings2, Shield, ShieldCheck, Smartphone, SmartphoneCharging,
+  Snowflake, Sparkle, Sparkles, Sun, Usb, Volume1, Volume2, Wrench,
 } from "lucide";
 
 // 控制轨与 Tab 用到的图标数据，集中导出避免散落
@@ -49,6 +50,25 @@ export const glyphs = Object.freeze({
   navSettingsGhost: Settings,
   platformIos: Apple,
   platformHarmony: Hexagon,
+  // Agent 能力展示（设置分区与首启弹窗）
+  bot: Bot,
+  scanEye: ScanEye,
+  wrench: Wrench,
+  sparkles: Sparkles,
+  smartphone: Smartphone,
+  // 设置子导航（FOLO 风格 icon + 文字）：icon/iconActive 成对，
+  // 点击切换时 icon prop 变化触发 morph，与主导航 navXxxActive 同款
+  palette: Palette,
+  paletteActive: PaintBucket,
+  usb: Usb,
+  usbActive: Cable,
+  botActive: BotMessageSquare, // bot 基础态已在上方（Agent 能力展示共用）
+  cast: Cast,
+  castActive: ScreenShare,
+  shield: Shield,
+  shieldCheck: ShieldCheck,
+  info: Info,
+  infoActive: BadgeInfo,
 });
 
 export { MorphIcon };

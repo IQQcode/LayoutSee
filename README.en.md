@@ -45,7 +45,7 @@ You can inspect the same structure yourself: click the screen to locate a tree n
 
 ## Get started
 
-Currently supports **macOS + real Android devices**. iOS and HarmonyOS are UI previews; device integration is not implemented yet.
+Supports **macOS + Android devices/simulators** and **iOS devices/simulators**. iOS requires your app to embed LookinServer in the Debug configuration (see below); HarmonyOS remains a UI preview.
 
 1. Download a DMG from the [website](https://layoutsee-site.vercel.app/download.html) or [Releases](https://github.com/IQQcode/LayoutSee/releases/latest): choose `arm64` for Apple Silicon or `x64` for Intel. You can also [run from source](#run-from-source). If macOS blocks an unsigned build, select “Open Anyway” in System Settings → Privacy & Security.
 2. Enable Developer options and USB debugging, connect the phone using a data-capable USB cable, and approve the debugging prompt on the device.
@@ -56,6 +56,8 @@ Device access requires `adb`. Set its path in Settings, or install it first:
 ```bash
 brew install android-platform-tools
 ```
+
+For iOS, no extra command-line tooling is needed: integrate [LookinServer](https://github.com/QMUI/LookinServer) (currently 1.2.8) into your app with the Debug configuration and keep the app in the foreground — it then appears in the device list automatically (simulators need no cable; real devices connect over USB). Both integration and environment setup can be delegated to an Agent, see below.
 
 ## Connect your Agent
 
@@ -83,6 +85,8 @@ Your Agent uses the tools it needs:
 | Add context | `get_device_info` · `get_current_app` · `get_screenshot` |
 
 12 built-in tools: 9 read, 3 write. Read-only mode blocks writes. After the page changes, capture again and use refs from the new snapshot. Tapping by `ref` uses the center of that node's bounds. See the [Skill tool reference](./skills/layout-see/references/mcp-tools.md) for invocation details.
+
+Environment setup and integration can also be delegated: the [`layout-env` Skill](./skills/layout-env/) checks and configures the runtime environment in one pass (ADB discovery and path mapping, Xcode and simulator runtimes, CocoaPods), and the [`layout-lookin-server` Skill](./skills/layout-lookin-server/) integrates LookinServer into your iOS project automatically. Try: “Set up my LayoutSee environment.” or “Integrate LookinServer into my app.”
 
 ## A workbench for developers, too
 

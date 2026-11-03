@@ -25,6 +25,9 @@ LayoutSee 需求实现拆解的入口文档。每个大 Feature 的开发拆解�
 | 26-08-28 | [Story-0827 macOS arm64 本地候选包](./story/26-08-28-story-0827-macos-arm64本地候选包.md) | 已构建，待人工功能测试 |
 | 26-08-31 | [Story-0831 Web 通用端：浏览器成为一等宿主](./story/26-08-31-story-0831-web通用端.md) | 编码与非可视化验证完成，待真机 review |
 | 26-09-07 | [macOS 双架构（arm64 + x64）候选包](./story/26-09-07-macos-双架构候选包.md) | x64 产物构建完成，待 2020/Intel 机器实测 |
+| 26-11-03 | [一键环境配置：layout-env 与 layout-lookin-server Skill](./story/26-11-03-一键环境配置skill.md) | 已完成，待 review |
+| 26-11-04 | [Agent 能力展示：首启弹窗与设置 Agent 分区](./story/26-11-04-Agent能力展示.md) | 已完成，待 review |
+| 26-11-04 | [包体积优化：DMG 136M→96M / 141M→112M（零功能变更）](../specs/22_8_package_size/summary.md) | 已完成，待 review |
 
 ## 路由
 

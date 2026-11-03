@@ -8,7 +8,7 @@ const readyValue = {
   port: 11663,
   pid: 4242,
   nonce,
-  productVersion: "22.7.0",
+  productVersion: "22.8.0",
   apiVersion: "1.0",
   snapshotSchemaVersion: "1.0",
 };
