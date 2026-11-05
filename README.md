@@ -7,7 +7,7 @@
 
 <h1 align="center">让 Agent 感知视图，触摸界面。</h1>
 
-<p align="center">把 Android 真机上的视图树，变成 Agent 可读、可定位、可操作的结构。</p>
+<p align="center">把 Android / iOS 真机上的视图树，变成 Agent 可读、可定位、可操作的结构。</p>
 
 <p align="center">
   中文 · <a href="./README.en.md">English</a><br>
@@ -20,9 +20,41 @@
 
 **截图让 Agent 看见画面，LayoutSee 让它接触画面背后的真实视图。**
 
-LayoutSee 是面向移动端开发者、QA 与 AI Agent 的 macOS 工具。通过 MCP，把 Android 运行时视图树交给 Agent：控件是什么、在哪、多大、属于谁、能不能点，都有结构依据。再沿着定位结果点击、滑动、输入，让分析接上真实操作。
+LayoutSee 是面向移动端开发者、QA 与 AI Agent 的 macOS 工具。通过 MCP，把 Android / iOS 运行时视图树交给 Agent：控件是什么、在哪、多大、属于谁、能不能点，都有结构依据。再沿着定位结果点击、滑动、输入，让分析接上真实操作。
 
 > 从「这里像一个按钮」，到「找到这个控件，读出它的边界，点击后验证页面」。
+
+## v22.8.0：AI 会写代码，现在它还能「摸到」界面
+
+**从这一版起，LayoutSee 真正意义上支持 Android、iOS 双端布局。**
+
+### 📱 iOS 布局抓取与分析
+
+iPhone 插线即发现：投屏、视图树、属性面板、日志抓取、布局诊断，与 Android 共用同一套工作台与 MCP 工具。Agent 不必关心对面是哪个平台——`find_element` 返回的永远是同一个结构化 `ref`。iOS 抓取恒只读，分析零风险。
+
+<p align="center">
+  <img src="https://iqqcode-cdn.oss-cn-beijing.aliyuncs.com/dev/layoutsee/10-ios-layout-analyse.png" width="100%" alt="iPhone 布局智能面板：语义摘要与六类布局诊断，右侧 iPhone 实时投屏">
+</p>
+
+### 🤖 Agent 能力，第一次「看得见」
+
+设置新增「Agent」分区，家底一次亮清：内核连接状态、MCP 工具数实时在线；三个随包 Skill——layout-see 布局感知、layout-env 一键配置、layout-lookin-server iOS 接入——每张卡片自带示例提示词，复制、粘贴、回车，任意 AI 客户端立刻上岗。
+
+<p align="center">
+  <img src="https://iqqcode-cdn.oss-cn-beijing.aliyuncs.com/dev/layoutsee/12-agent-mcp-skill.png" width="100%" alt="设置中的 Agent 分区：内核与 MCP 连接状态，三个随包 Skill 卡片与可复制的示例提示词">
+</p>
+
+### 👋 首次打开，AI 自己做自我介绍
+
+一封「让 AI 读懂你的界面」的开机信，三个 Skill 是什么、怎么用，一张弹窗讲明白。只弹一次，绝不打扰。
+
+### 🛠️ 环境配置，一句话的事
+
+以前装 ADB、配路径、查 Xcode、排查模拟器，坑要踩半小时；现在把 layout-env 交给 AI，一句话全体检、adb 路径自动写好。想抓 iOS？layout-lookin-server 直接把 LookinServer 集成进你的工程，CocoaPods / SPM 两条路都通。
+
+### 📦 顺便瘦了个身
+
+DMG 136 → 94 MB（arm64）、141 → 104 MB（x64），下载快了近三分之一，功能一克没少。
 
 ## 它让 Agent 多了什么
 
@@ -45,7 +77,7 @@ LayoutSee 是面向移动端开发者、QA 与 AI Agent 的 macOS 工具。通�
 
 ## 开始使用
 
-当前支持 **macOS + Android 真机/模拟器** 与 **iOS 真机/模拟器**。iOS 需被测 App 以 Debug 配置集成 LookinServer（见下）；HarmonyOS 仍为界面预览。
+当前支持 **macOS + Android 真机/模拟器** 与 **iOS 真机/模拟器**。iOS 需被测 App 以 Debug 配置集成 LookinServer（见下）；HarmonyOS 支持已在路上。
 
 1. 在[官网下载页](https://layoutsee-site.vercel.app/download.html)或 [Releases](https://github.com/IQQcode/LayoutSee/releases/latest) 下载 DMG：Apple Silicon 选 `arm64`，Intel 选 `x64`。也可[从源码运行](#从源码运行)。未签名包首次打开若被拦截，在「系统设置 → 隐私与安全性」中选择「仍要打开」。
 2. 开启手机的开发者选项与 USB 调试，用支持数据传输的数据线连接 Mac，在手机上确认调试授权。
@@ -137,4 +169,4 @@ npm run package:mac  # 打包 macOS 应用
 
 ## 致谢
 
-Android 设备接入与投屏能力基于 [uiautomator2](https://github.com/openatx/uiautomator2)、[scrcpy](https://github.com/Genymobile/scrcpy) 等开源项目；设备接入层参考并二次开发自 [uiautodev](https://github.com/codeskyblue/uiautodev)。
+Android 设备接入与投屏能力基于 [uiautomator2](https://github.com/openatx/uiautomator2)、[scrcpy](https://github.com/Genymobile/scrcpy) 等开源项目，设备接入层参考并二次开发自 [uiautodev](https://github.com/codeskyblue/uiautodev)；iOS 布局抓取基于 [LookinServer](https://github.com/QMUI/LookinServer)（MIT）开源项目实现。

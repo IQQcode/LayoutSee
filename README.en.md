@@ -7,7 +7,7 @@
 
 <h1 align="center">Give your Agent a sense of UI. And a way to touch it.</h1>
 
-<p align="center">Turn the view tree on a real Android device into structure your Agent can read, locate and act on.</p>
+<p align="center">Turn the view tree on a real Android or iOS device into structure your Agent can read, locate and act on.</p>
 
 <p align="center">
   <a href="./README.md">中文</a> · English<br>
@@ -20,9 +20,41 @@
 
 **Screenshots show your Agent the screen. LayoutSee gives it access to the views behind it.**
 
-LayoutSee is a macOS tool for mobile developers, QA engineers and AI Agents. It exposes the Android runtime view tree through MCP: what a control is, where it sits, how big it is, who its parent is and whether it is clickable. Your Agent can then tap, swipe and type on the device, connecting its analysis to real actions.
+LayoutSee is a macOS tool for mobile developers, QA engineers and AI Agents. It exposes the Android and iOS runtime view trees through MCP: what a control is, where it sits, how big it is, who its parent is and whether it is clickable. Your Agent can then tap, swipe and type on the device, connecting its analysis to real actions.
 
 > From “that looks like a button” to “find this control, read its bounds, tap it and verify the next screen.”
+
+## What's new in v22.8.0: your AI can now touch the UI
+
+**As of this release, LayoutSee truly supports both Android and iOS layouts.**
+
+### 📱 iOS layout capture and analysis
+
+Plug in an iPhone and it appears automatically: mirroring, view tree, attribute inspector, log capture and layout diagnostics — the same workbench and MCP tools as Android. Your Agent never needs to care which platform is on the other end: `find_element` always returns the same structured `ref`. iOS capture is strictly read-only.
+
+<p align="center">
+  <img src="https://iqqcode-cdn.oss-cn-beijing.aliyuncs.com/dev/layoutsee/10-ios-layout-analyse.png" width="100%" alt="iPhone layout intelligence panel: semantic summary and six layout diagnostics, with a live iPhone mirror on the right">
+</p>
+
+### 🤖 Agent capabilities, visible for the first time
+
+A new “Agent” section in Settings shows everything at a glance: live kernel connection status and MCP tool count, plus three bundled Skills — layout-see for layout perception, layout-env for one-shot setup, layout-lookin-server for iOS integration. Every card ships a copyable example prompt: copy, paste, enter — any AI client is ready to go.
+
+<p align="center">
+  <img src="https://iqqcode-cdn.oss-cn-beijing.aliyuncs.com/dev/layoutsee/12-agent-mcp-skill.png" width="100%" alt="The Agent section in Settings: kernel and MCP status, three bundled Skill cards with copyable example prompts">
+</p>
+
+### 👋 A first-launch letter from your AI
+
+A short “let AI read your UI” intro explains what the three Skills do and how to use them. Shown once, never again.
+
+### 🛠️ Environment setup, one sentence
+
+Installing ADB, wiring paths, checking Xcode, debugging simulators — half an hour of pitfalls before. Now hand layout-env to your AI: one sentence, a full health check, ADB path mapped automatically. Want iOS? layout-lookin-server integrates LookinServer into your project, through CocoaPods or SPM.
+
+### 📦 And a lighter download
+
+DMG 136 → 94 MB (arm64), 141 → 104 MB (x64) — nearly a third smaller, not a feature fewer.
 
 ## What your Agent gains
 
@@ -45,7 +77,7 @@ You can inspect the same structure yourself: click the screen to locate a tree n
 
 ## Get started
 
-Supports **macOS + Android devices/simulators** and **iOS devices/simulators**. iOS requires your app to embed LookinServer in the Debug configuration (see below); HarmonyOS remains a UI preview.
+Supports **macOS + Android devices/simulators** and **iOS devices/simulators**. iOS requires your app to embed LookinServer in the Debug configuration (see below); HarmonyOS support is on the way.
 
 1. Download a DMG from the [website](https://layoutsee-site.vercel.app/download.html) or [Releases](https://github.com/IQQcode/LayoutSee/releases/latest): choose `arm64` for Apple Silicon or `x64` for Intel. You can also [run from source](#run-from-source). If macOS blocks an unsigned build, select “Open Anyway” in System Settings → Privacy & Security.
 2. Enable Developer options and USB debugging, connect the phone using a data-capable USB cable, and approve the debugging prompt on the device.
@@ -137,4 +169,4 @@ Find module setup guides in [source/index.md](./source/index.md) and the full wo
 
 ## Acknowledgments
 
-Android device access and mirroring build on open-source projects including [uiautomator2](https://github.com/openatx/uiautomator2) and [scrcpy](https://github.com/Genymobile/scrcpy). The device-access layer was adapted from [uiautodev](https://github.com/codeskyblue/uiautodev).
+Android device access and mirroring build on open-source projects including [uiautomator2](https://github.com/openatx/uiautomator2) and [scrcpy](https://github.com/Genymobile/scrcpy). The device-access layer was adapted from [uiautodev](https://github.com/codeskyblue/uiautodev). iOS layout capture is implemented on top of [LookinServer](https://github.com/QMUI/LookinServer) (MIT).
