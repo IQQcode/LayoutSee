@@ -89,7 +89,23 @@ Device access requires `adb`. Set its path in Settings, or install it first:
 brew install android-platform-tools
 ```
 
-For iOS, no extra command-line tooling is needed: integrate [LookinServer](https://github.com/QMUI/LookinServer) (currently 1.2.8) into your app with the Debug configuration and keep the app in the foreground — it then appears in the device list automatically (simulators need no cable; real devices connect over USB). Both integration and environment setup can be delegated to an Agent, see below.
+For iOS, no extra command-line tooling is needed: integrate [LookinServer](https://github.com/QMUI/LookinServer) (currently 1.2.8) into your app with the Debug configuration and keep the app in the foreground — it then appears in the device list automatically (simulators need no cable; real devices connect over USB).
+
+### Environment setup in two prompts
+
+Installing ADB, wiring paths, checking Xcode, integrating LookinServer — none of this has to be done by hand. The in-app “Settings → Agent” section ships an example prompt for each bundled Skill; hand them to any AI client (Claude / Cursor / Comate and friends), copy, paste, enter:
+
+**Health check and one-shot setup** (ADB discovery and path mapping, Xcode and simulator runtimes, CocoaPods):
+
+```text
+Run a LayoutSee environment check and one-shot setup with layout-env.
+```
+
+**iOS integration** (do this once before capturing iOS layouts; embeds LookinServer into your project, CocoaPods or SPM):
+
+```text
+Integrate LookinServer into my iOS project with layout-lookin-server.
+```
 
 ## Connect your Agent
 
@@ -118,7 +134,7 @@ Your Agent uses the tools it needs:
 
 12 built-in tools: 9 read, 3 write. Read-only mode blocks writes. After the page changes, capture again and use refs from the new snapshot. Tapping by `ref` uses the center of that node's bounds. See the [Skill tool reference](./skills/layout-see/references/mcp-tools.md) for invocation details.
 
-Environment setup and integration can also be delegated: the [`layout-env` Skill](./skills/layout-env/) checks and configures the runtime environment in one pass (ADB discovery and path mapping, Xcode and simulator runtimes, CocoaPods), and the [`layout-lookin-server` Skill](./skills/layout-lookin-server/) integrates LookinServer into your iOS project automatically. Try: “Set up my LayoutSee environment.” or “Integrate LookinServer into my app.”
+Environment setup and integration are delegated the same way: [`layout-env`](./skills/layout-env/) runs the health check and one-shot setup, [`layout-lookin-server`](./skills/layout-lookin-server/) embeds LookinServer into your iOS project — see the two prompts under [Get started](#get-started).
 
 ## A workbench for developers, too
 

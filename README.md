@@ -89,7 +89,23 @@ DMG 136 → 94 MB（arm64）、141 → 104 MB（x64），下载快了近三分�
 brew install android-platform-tools
 ```
 
-iOS 无需额外命令行工具链：被测 App 以 Debug 配置集成 [LookinServer](https://github.com/QMUI/LookinServer)（当前 1.2.8）并前台运行，即可自动出现在设备列表（模拟器无需数据线，真机走 USB）。集成与环境配置都可以交给 Agent，见下节。
+iOS 无需额外命令行工具链：被测 App 以 Debug 配置集成 [LookinServer](https://github.com/QMUI/LookinServer)（当前 1.2.8）并前台运行，即可自动出现在设备列表（模拟器无需数据线，真机走 USB）。
+
+### 环境初始化，两条提示词
+
+装 ADB、配路径、查 Xcode、集成 LookinServer——这些初始化工作不必亲手做。应用内「设置 → Agent」给两个随包 Skill 各配了一条示例提示词，交给任意 AI 客户端（Claude / Cursor / Comate 等），复制、粘贴、回车：
+
+**环境体检与一键配置**（ADB 探测与路径映射、Xcode 与模拟器 runtime、CocoaPods 等一次过）：
+
+```text
+用 layout-env 帮我做 LayoutSee 的环境体检与一键配置。
+```
+
+**iOS 接入**（抓 iOS 布局前做一次；自动把 LookinServer 集成进你的工程，CocoaPods / SPM 都支持）：
+
+```text
+用 layout-lookin-server 把 LookinServer 集成进我的 iOS 工程。
+```
 
 ## 交给 Agent
 
@@ -118,7 +134,7 @@ Agent 根据任务调用工具：
 
 共 12 个内置工具，9 读 3 写。开启只读模式后，写操作会被拦截；页面变化后应重新抓取，使用新快照中的 `ref`。按 `ref` 点击时，工具使用该节点边界的中心坐标。完整调用方式见 [Skill 工具说明](./skills/layout-see/references/mcp-tools.md)。
 
-环境与集成也可交给 Agent：[`layout-env` Skill](./skills/layout-env/) 一键体检并配置运行环境（ADB 探测与路径映射、Xcode 与模拟器 runtime、CocoaPods 等），[`layout-lookin-server` Skill](./skills/layout-lookin-server/) 把 LookinServer 自动集成进你的 iOS 工程。例如：「帮我配置好 LayoutSee 的环境」或「把 LookinServer 集成进我的 App」。
+环境与集成同样交给 Agent：[`layout-env`](./skills/layout-env/) 与 [`layout-lookin-server`](./skills/layout-lookin-server/) 分别负责体检配置与 iOS 工程集成，对应的两条提示词见[开始使用](#开始使用)的「环境初始化」。
 
 ## 也给开发者一张工作台
 
