@@ -3,14 +3,19 @@ import { ClipboardText, FolderOpen, Info } from "@phosphor-icons/react";
 import { api } from "../../api/client.js";
 import { HostBridge } from "../../app/HostBridge.js";
 import { loadThemePreference } from "../../app/theme.js";
+import { MorphGlyph, glyphs } from "../../components/MorphIcons.jsx";
 import { Banner, Button, CopyButton, StatusPill, useToast } from "../../components/ui.jsx";
+import { AGENT_SKILLS } from "../onboarding/agentSkills.js";
 
+// icon/iconActive 为 MorphIcons.jsx glyphs 的键名对（Lucide 描边集，构建期打包），
+// 选中态换 icon 触发 MorphGlyph 弹性变形，与主导航一致
 const SECTIONS = [
-  { id: "appearance", label: "外观" },
-  { id: "device", label: "设备与驱动" },
-  { id: "casting", label: "投屏" },
-  { id: "security", label: "安全" },
-  { id: "about", label: "关于" },
+  { id: "appearance", label: "外观", icon: "palette", iconActive: "paletteActive" },
+  { id: "device", label: "设备与驱动", icon: "usb", iconActive: "usbActive" },
+  { id: "agent", label: "Agent", icon: "bot", iconActive: "botActive" },
+  { id: "casting", label: "投屏", icon: "cast", iconActive: "castActive" },
+  { id: "security", label: "安全", icon: "shield", iconActive: "shieldCheck" },
+  { id: "about", label: "关于", icon: "info", iconActive: "infoActive" },
 ];
 
 export function SettingsPage({ onThemeChange }) {
@@ -24,6 +29,7 @@ export function SettingsPage({ onThemeChange }) {
   const [paths, setPaths] = useState(null);
   const [adbPathDraft, setAdbPathDraft] = useState("");
   const [themePreference, setThemePreference] = useState(loadThemePreference);
+  const [mcpToolCount, setMcpToolCount] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -33,6 +39,7 @@ export function SettingsPage({ onThemeChange }) {
       setAdbPathDraft(payload.adbPath ?? "");
     }).catch((err) => active && setError(err));
     api.info().then((payload) => active && setCoreInfo(payload)).catch(() => {});
+    api.mcpTools().then((payload) => active && setMcpToolCount(payload.tools?.length ?? null)).catch(() => {});
     // 浏览器宿主打不开目录，需要拿到路径文本展示
     if (!HostBridge.can.openDirectory) api.paths().then((payload) => active && setPaths(payload)).catch(() => {});
     HostBridge.getAppInfo().then((info) => active && setAppInfo(info));
@@ -74,13 +81,16 @@ export function SettingsPage({ onThemeChange }) {
       <div className="page-heading">
         <div>
           <h1>设置</h1>
-          <p>外观、设备驱动、投屏、安全与应用信息</p>
+          <p>外观、设备驱动、Agent 能力、投屏、安全与应用信息</p>
         </div>
       </div>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="设置分组">
-          {SECTIONS.map(({ id, label }) => (
-            <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{label}</button>
+          {SECTIONS.map(({ id, label, icon, iconActive }) => (
+            <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>
+              <MorphGlyph icon={glyphs[section === id ? iconActive : icon]} size={16} strokeWidth={1.9} className="settings-nav-icon" />
+              {label}
+            </button>
           ))}
         </nav>
         <div className="settings-section">
@@ -131,6 +141,57 @@ export function SettingsPage({ onThemeChange }) {
                   onBlur={() => save({ pollIntervalMs: settings.pollIntervalMs }, "轮询间隔已保存")} />
               </div>
             </section>
+          ) : null}
+
+          {section === "agent" ? (
+            <>
+              <section className="content-card">
+                <div className="card-heading">
+                  <div>
+                    <h3 className="agent-skill-head">
+                      <span className="agent-skill-icon" aria-hidden="true"><MorphGlyph icon={glyphs.bot} size={16} /></span>
+                      Agent 能力
+                    </h3>
+                    <p>LayoutSee 通过 MCP 把运行时视图树交给 AI；三个随包 Skill 覆盖感知、配置与 iOS 接入</p>
+                  </div>
+                </div>
+                <div className="agent-status-row">
+                  <StatusPill tone="success" dot>本地内核已连接 · {coreInfo?.port ?? "—"}</StatusPill>
+                  <StatusPill tone="info">MCP 工具 {mcpToolCount ?? "…"} 个</StatusPill>
+                </div>
+              </section>
+
+              {AGENT_SKILLS.map((skill) => (
+                <section className="content-card" key={skill.name}>
+                  <div className="card-heading">
+                    <div>
+                      <h3 className="agent-skill-head">
+                        <span className="agent-skill-icon" aria-hidden="true"><MorphGlyph icon={glyphs[skill.glyph]} size={16} /></span>
+                        <code>{skill.name}</code>
+                        <span className="skill-tag">{skill.tag}</span>
+                      </h3>
+                      <p>{skill.summary}</p>
+                    </div>
+                  </div>
+                  <div className="prompt-box">
+                    <div className="prompt-box-head">
+                      <span>示例提示词</span>
+                      <CopyButton value={skill.prompt} label="复制" />
+                    </div>
+                    <pre><code>{skill.prompt}</code></pre>
+                  </div>
+                </section>
+              ))}
+
+              <section className="content-card">
+                <div className="card-heading">
+                  <div>
+                    <h3>MCP 端点</h3>
+                    <p>每台在线设备都有独立 MCP 端点：打开设备工作台 → MCP Tab，按客户端复制配置</p>
+                  </div>
+                </div>
+              </section>
+            </>
           ) : null}
 
           {section === "casting" ? (

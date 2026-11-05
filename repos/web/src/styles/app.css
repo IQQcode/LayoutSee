@@ -769,7 +769,8 @@ details.raw-attrs[open] summary { border-bottom: 1px solid var(--ls-color-border
 
 .settings-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
 .settings-nav { display: grid; gap: 2px; position: sticky; top: 0; }
-.settings-nav button { padding: 7px 10px; border: none; border-radius: 8px; background: none; text-align: left; color: var(--ls-color-text-secondary); cursor: pointer; }
+.settings-nav button { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: none; border-radius: 8px; background: none; text-align: left; color: var(--ls-color-text-secondary); cursor: pointer; }
+.settings-nav button .settings-nav-icon { color: var(--ls-color-brand); flex: 0 0 auto; }
 .settings-nav button.active { background: var(--ls-color-bg-selected); color: var(--ls-color-brand); font-weight: 600; }
 .settings-section { max-width: 560px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--ls-color-border-default); }
@@ -784,3 +785,22 @@ details.raw-attrs[open] summary { border-bottom: 1px solid var(--ls-color-border
 .about-grid span { color: var(--ls-color-text-tertiary); }
 .about-grid code { color: var(--ls-color-text-primary); }
 .compat-badge { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Agent 能力展示（设置 Agent 分区与首启弹窗共用头部件） */
+.agent-skill-head { display: flex; align-items: center; gap: 8px; margin: 0; }
+.agent-skill-head code { font-size: 13px; font-weight: 600; color: var(--ls-color-text-primary); }
+.agent-skill-icon { flex: 0 0 auto; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: var(--ls-color-bg-selected); color: var(--ls-color-brand); }
+.skill-tag { padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--ls-color-brand); background: var(--ls-color-bg-selected); }
+.agent-status-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.prompt-box { border: 1px solid var(--ls-color-border-default); border-radius: 9px; background: var(--ls-color-bg-subtle); overflow: hidden; }
+.prompt-box-head { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; font-size: 11.5px; color: var(--ls-color-text-tertiary); }
+.prompt-box pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--ls-color-border-default); font-size: 12px; line-height: 1.6; overflow-x: auto; }
+
+/* 首启弹窗 */
+.intro-lead { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 14px; color: var(--ls-color-text-secondary); font-size: 12.5px; line-height: 1.65; }
+.intro-lead .intro-lead-icon { flex: 0 0 auto; color: var(--ls-color-brand); margin-top: 2px; }
+.intro-skills { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.intro-skill { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--ls-color-border-default); border-radius: 10px; }
+.intro-skill-body { min-width: 0; }
+.intro-skill-body p { margin: 3px 0 0; color: var(--ls-color-text-tertiary); font-size: 12px; line-height: 1.55; }
+.intro-footnote { margin: 14px 0 0; color: var(--ls-color-text-tertiary); font-size: 11.5px; }

@@ -78,6 +78,16 @@ class SettingsStoreTest(unittest.TestCase):
             self.assertEqual(updated["theme"], "dark")
             self.assertEqual(SettingsStore(Path(tmp)).get()["schemaVersion"], "1.0")
 
+    def test_agent_intro_seen_boolean_key(self) -> None:
+        """Agent 能力首启标记：缺省 False、布尔可写、持久化、非布尔被拒。"""
+        with tempfile.TemporaryDirectory(prefix="layoutsee-settings-") as tmp:
+            store = SettingsStore(Path(tmp))
+            self.assertFalse(store.get()["agentIntroSeen"])
+            self.assertTrue(store.update({"agentIntroSeen": True})["agentIntroSeen"])
+            self.assertTrue(SettingsStore(Path(tmp)).get()["agentIntroSeen"])
+            with self.assertRaises(CoreError):
+                store.update({"agentIntroSeen": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

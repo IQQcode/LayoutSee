@@ -36,6 +36,20 @@ async function ready(path) {
   return stat(path).then(() => true).catch(() => false);
 }
 
+// 体积基线观测：du -sk 后换算，格式化输出到打包日志
+async function sizeKb(path) {
+  try {
+    const { stdout } = await exec("du", ["-sk", path]);
+    return Number(stdout.trim().split("\t")[0]) * 1024;
+  } catch {
+    return 0;
+  }
+}
+
+function fmtSize(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // 图标唯一事实源是 assets/LayoutSee-1024.png；build/ 下全部为打包时再生的产物。
 async function buildIcon() {
   const iconPng = resolve(macRoot, "assets/LayoutSee-1024.png");
@@ -109,6 +123,10 @@ async function buildCore(arch, coreDeps) {
     "--onedir",
     "--clean",
     "--noconfirm",
+    // 瘦身：strip 收集的 so/dylib 符号表（libpython 18M 里占比可观）；
+    // setuptools 是 PyInstaller hook 拖进来的空壳，运行时无依赖。
+    "--strip",
+    "--exclude-module", "setuptools",
     "--paths", resolve(coreRoot, "src"),
     "--add-data", `${resolve(coreRoot, "src/layoutsee_core/resources")}:layoutsee_core/resources`,
     // 插件包源码在 repos/plugins，打包时落到 Core 包内 builtin_plugins（bootstrap.builtin_plugins_dir 先找这里）
@@ -225,8 +243,16 @@ for (const arch of archs) {
   }
   const dmg = resolve(releaseDir, `LayoutSee-${packageJson.version}-${arch}.dmg`);
   const dmgName = basename(dmg);
+  // 体积优化：electron-builder 的 UDZO（zlib）产出后转 ULMO（完整块级 lzfse）。
+  // 实测同一分区数据（22.7.0 arm64）：UDZO 135.6M / ULFO 144.0M / ULMO 112.0M。
+  // ULMO 需 macOS 10.15+（产品下限 13.0）；blockmap 因后处理失效，已停生成。
+  const converted = `${dmg}.ulmo-tmp.dmg`; // hdiutil convert 会自动补 .dmg 后缀
+  await exec("hdiutil", ["convert", dmg, "-format", "ULMO", "-o", converted, "-quiet"], { cwd: macRoot, maxBuffer: 16 * 1024 * 1024 });
+  await rm(dmg, { force: true });
+  await rename(converted, dmg);
   await rename(dmg, resolve(archDir, dmgName));
-  const blockmap = resolve(releaseDir, `${dmgName}.blockmap`);
-  if (await ready(blockmap)) await rename(blockmap, resolve(archDir, `${dmgName}.blockmap`));
+  // writeUpdateInfo: false 已停生成 blockmap；此处兜底清理防残留。
+  await rm(resolve(releaseDir, `${dmgName}.blockmap`), { force: true });
   console.log(`LayoutSee ${packageJson.version} ${arch} 本地候选包已生成 → release/mac-${arch}/${dmgName}`);
+  console.log(`[体积] core onedir ${fmtSize(await sizeKb(resolve(coreRoot, `dist/${arch}/layoutsee-core`)))} | DMG ${fmtSize(await sizeKb(resolve(archDir, dmgName)))}`);
 }

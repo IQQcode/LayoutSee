@@ -39,4 +39,7 @@ dmg:
   artifactName: "LayoutSee-${version}-${arch}.${ext}"
   title: "LayoutSee ${version}"
   sign: false
+  # DMG 体积：package.mjs 在 electron-builder 产出 UDZO 后统一转 ULMO（完整块级 lzfse），
+  # blockmap 因后处理失效且产品无自动更新，这里停生成
+  writeUpdateInfo: false
 publish: null
