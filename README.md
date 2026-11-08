@@ -24,9 +24,9 @@ LayoutSee 是面向移动端开发者、QA 与 AI Agent 的 macOS 工具。通�
 
 > 从「这里像一个按钮」，到「找到这个控件，读出它的边界，点击后验证页面」。
 
-## v22.8.0：AI 会写代码，现在它还能「摸到」界面
+## AI 会写代码，现在它还能「摸到」界面
 
-**从这一版起，LayoutSee 真正意义上支持 Android、iOS 双端布局。**
+**LayoutSee 支持 Android、iOS 双端布局；Harmony鸿蒙布局开发中ing，在路上**
 
 ### 📱 iOS 布局抓取与分析
 
