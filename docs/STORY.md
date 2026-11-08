@@ -28,6 +28,7 @@ LayoutSee 需求实现拆解的入口文档。每个大 Feature 的开发拆解�
 | 26-11-03 | [一键环境配置：layout-env 与 layout-lookin-server Skill](./story/26-11-03-一键环境配置skill.md) | 已完成，待 review |
 | 26-11-04 | [Agent 能力展示：首启弹窗与设置 Agent 分区](./story/26-11-04-Agent能力展示.md) | 已完成，待 review |
 | 26-11-04 | [包体积优化：DMG 136M→96M / 141M→112M（零功能变更）](../specs/22_8_package_size/summary.md) | 已完成，待 review |
+| 26-11-06 | [Rosetta 转译防呆：卡顿根因定位（误装 x64 包）+ 装错架构提示 + 首帧白闪修复](../specs/22_8_rosetta_guard/summary.md) | 已完成，待 review |
 
 ## 路由
 
