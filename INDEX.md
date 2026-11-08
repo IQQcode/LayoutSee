@@ -68,7 +68,7 @@
 | `api/client.js` | fetch 封装 + api 对象（全部端点） | 令牌注入 `X-LayoutSee-Session`；**网络层日志**：非 2xx 记 `[LayoutSee][网络]`，`/api/v1/ui-logs` 豁免防递归 |
 | `api/logger.js` | 统一 Tag 日志 `[LayoutSee][Tab名]` | `uiLog/uiLogApi/LogTags`；1.5s 批量上报；上报通道由 LoggingBridge 注入（避免循环依赖） |
 | `media/scrcpyStream.js` | ScrcpyViewer：拉流 → 解析 → WebCodecs 解码 → canvas | **avcC description 长度必须精确**（多 1 字节 Chromium 零输出且无报错）；丢帧后等关键帧；解码器错误自愈；pts 取低 48 位 |
-| `app/AppShell.jsx` | 侧边导航 + 标题栏 + KernelBanner | 左侧导航与标题栏齿轮用 `MorphGlyph`，激活态 morph（设备→充电、群控→宫格勾、设置→设置2） |
+| `app/AppShell.jsx` | 侧边导航 + 标题栏 + KernelBanner + TranslatedBanner | 左侧导航与标题栏齿轮用 `MorphGlyph`，激活态 morph（设备→充电、群控→宫格勾、设置→设置2）；TranslatedBanner 在 `app:info.translated`（Rosetta 转译）时常驻警示架构不匹配 |
 | `app/HostBridge.js` | 宿主抽象：`kind`（shell / browser）+ `can` 能力清单 + 会话初始化 | 壳走 IPC 会话，浏览器读 `<meta name="layoutsee-session">`（dev 下回落 `VITE_LAYOUTSEE_SESSION`）；UI 按 `can` 渲染，禁止 `isElectron` 式嗅探；两者都没有令牌时进入只读观察模式并出横幅 |
 | `app/LoggingBridge.js` / `theme.js` / `GlobalErrorBoundary.jsx` | 日志接线 / 主题（data-theme + 原生同步）/ 错误边界 | |
 | `components/MorphIcons.jsx` | **左侧图标系统**：morphicons（MIT）+ Lucide 图标数据，`glyphs` 集中导出 | 换 prop 即弹簧变形，无需 from/to 或 key；`MorphGlyph` 统一 19px / 线宽 2 / `reducedMotion="user"`（跟随系统减弱动效）；**新增图标只改这个文件**；图标必须是描边中心线集（Lucide/Tabler/Heroicons outline），Phosphor 填充型不可用 |
@@ -116,7 +116,7 @@
 | `main/logging.mjs` | 按天日志 `logs/YYYY-MM-DD-{shell,core}.log` | Core stderr 由此收集 |
 | `preload/index.cjs` | `contextBridge` 白名单暴露 | 新 IPC 必须同时加 main handler + 这里 + ShellBridge |
 | `shared/handshake.mjs` | 跨语言握手金样（版本矩阵 + 令牌推导） | Node 侧与 Python `server.derive_session_token` 必须一致 |
-| `bootstrap/index.html` | 内置启动/错误页（不依赖 Core） | 启动等待用 ThinkingOrb 风点阵球（panelui ThinkingOrb 视觉的 canvas 重写：working=倾斜轨道粒子流、searching=点阵球+扫描经线，随 Core 状态切换；failed/stopped 隐藏、prefers-reduced-motion 静态帧）+ logo 呼吸；明暗色自适应。logo 以 data URI 内嵌，该页 CSP 只放行 `img-src data:` |
+| `bootstrap/index.html` | 内置启动/错误页（不依赖 Core） | 启动等待用 ThinkingOrb 风点阵球（panelui ThinkingOrb 视觉的 canvas 重写：working=倾斜轨道粒子流、searching=点阵球+扫描经线，随 Core 状态切换；failed/stopped 隐藏、prefers-reduced-motion 静态帧）+ logo 呼吸；明暗色自适应。logo 以 data URI 内嵌，该页 CSP 只放行 `img-src data:`；22.8 起检测 Rosetta 转译（`app:info.translated`，main 进程 `sysctl proc_translated`）显示架构不匹配警示条——x64 包在 Apple Silicon 上全程转译会掉帧白屏，见 `specs/22_8_rosetta_guard/` |
 
 ### scripts/
 
